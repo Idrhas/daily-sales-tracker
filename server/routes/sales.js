@@ -98,10 +98,26 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/sales - Record a new sale
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { amount, currency = '$', description, category = 'General', date, time, receipt_url, notes } = req.body;
+    const { amount, currency = '$', description, category = 'General', date, time, receipt_url, notes, items } = req.body;
 
-    if (amount === undefined || amount === null || !description) {
-      return res.status(400).json({ error: 'Amount and description are required' });
+    const itemsJson = items ? (typeof items === 'string' ? items : JSON.stringify(items)) : null;
+    let finalAmount = amount;
+    let finalDesc = description;
+
+    // If items list provided, calculate amount from items if not given
+    if ((finalAmount === undefined || finalAmount === null || finalAmount === '') && Array.isArray(items) && items.length > 0) {
+      finalAmount = items.reduce((sum, it) => sum + (Number(it.total) || (Number(it.qty || 1) * Number(it.price || 0))), 0);
+    }
+
+    if (!finalDesc && Array.isArray(items) && items.length > 0) {
+      finalDesc = items[0].name || items[0].description || 'Sales Order';
+      if (items.length > 1) {
+        finalDesc += ` (+${items.length - 1} more items)`;
+      }
+    }
+
+    if (finalAmount === undefined || finalAmount === null || !finalDesc) {
+      return res.status(400).json({ error: 'Amount and description (or items list) are required' });
     }
 
     const now = new Date();
@@ -111,9 +127,9 @@ router.post('/', requireAuth, async (req, res) => {
     const createdAt = now.toISOString();
 
     const result = await db.runAsync(
-      `INSERT INTO sales (amount, currency, description, category, date, time, created_at, receipt_url, created_by, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [Number(amount), currency, description.trim(), category, finalDate, finalTime, createdAt, receipt_url || null, req.user.username, notes || null]
+      `INSERT INTO sales (amount, currency, description, category, date, time, created_at, receipt_url, created_by, notes, items)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [Number(finalAmount), currency, finalDesc.trim(), category, finalDate, finalTime, createdAt, receipt_url || null, req.user.username, notes || null, itemsJson]
     );
 
     const saleId = result.lastID;
@@ -128,11 +144,12 @@ router.post('/', requireAuth, async (req, res) => {
         req.user.username,
         createdAt,
         JSON.stringify({
-          amount: Number(amount),
-          description: description.trim(),
+          amount: Number(finalAmount),
+          description: finalDesc.trim(),
           date: finalDate,
           time: finalTime,
-          receipt_url: receipt_url || null
+          receipt_url: receipt_url || null,
+          itemsCount: Array.isArray(items) ? items.length : 0
         })
       ]
     );
@@ -149,7 +166,7 @@ router.post('/', requireAuth, async (req, res) => {
 router.put('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { amount, currency, description, category, date, time, receipt_url, notes } = req.body;
+    const { amount, currency, description, category, date, time, receipt_url, notes, items } = req.body;
 
     const existing = await db.getAsync(`SELECT * FROM sales WHERE id = ?`, [id]);
     if (!existing) {
@@ -157,6 +174,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     const updatedAt = new Date().toISOString();
+    const itemsJson = items !== undefined ? (typeof items === 'string' ? items : JSON.stringify(items)) : existing.items;
 
     // Prepare updated fields (created_at is intentionally preserved and cannot be changed!)
     const updatedAmount = amount !== undefined ? Number(amount) : existing.amount;
@@ -170,9 +188,9 @@ router.put('/:id', requireAuth, async (req, res) => {
 
     await db.runAsync(
       `UPDATE sales
-       SET amount = ?, currency = ?, description = ?, category = ?, date = ?, time = ?, updated_at = ?, receipt_url = ?, notes = ?
+       SET amount = ?, currency = ?, description = ?, category = ?, date = ?, time = ?, updated_at = ?, receipt_url = ?, notes = ?, items = ?
        WHERE id = ?`,
-      [updatedAmount, updatedCurrency, updatedDesc, updatedCategory, updatedDate, updatedTime, updatedAt, updatedReceipt, updatedNotes, id]
+      [updatedAmount, updatedCurrency, updatedDesc, updatedCategory, updatedDate, updatedTime, updatedAt, updatedReceipt, updatedNotes, itemsJson, id]
     );
 
     // Record detailed change history in audit logs
@@ -184,7 +202,8 @@ router.put('/:id', requireAuth, async (req, res) => {
         date: existing.date,
         time: existing.time,
         receipt_url: existing.receipt_url,
-        notes: existing.notes
+        notes: existing.notes,
+        items: existing.items
       },
       current: {
         amount: updatedAmount,
@@ -193,7 +212,8 @@ router.put('/:id', requireAuth, async (req, res) => {
         date: updatedDate,
         time: updatedTime,
         receipt_url: updatedReceipt,
-        notes: updatedNotes
+        notes: updatedNotes,
+        items: itemsJson
       }
     };
 

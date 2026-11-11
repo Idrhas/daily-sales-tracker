@@ -69,7 +69,7 @@ router.get('/data', async (req, res) => {
       return res.status(403).json({ error: 'Invalid or expired share link' });
     }
 
-    let query = `SELECT id, amount, currency, description, category, date, time, created_at, receipt_url, notes FROM sales WHERE 1=1`;
+    let query = `SELECT id, amount, currency, description, category, date, time, created_at, receipt_url, notes, items FROM sales WHERE 1=1`;
     const params = [];
 
     const { startDate, endDate } = getDateBoundaries(filter, cStart, cEnd);

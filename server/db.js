@@ -59,9 +59,16 @@ async function initDB() {
       updated_at TEXT,
       receipt_url TEXT,
       created_by TEXT DEFAULT 'user',
-      notes TEXT
+      notes TEXT,
+      items TEXT
     )
   `);
+
+  try {
+    await db.runAsync(`ALTER TABLE sales ADD COLUMN items TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
 
   await db.runAsync(`
     CREATE TABLE IF NOT EXISTS audit_logs (

@@ -10,6 +10,7 @@ client/dist/
 server/sales.db
 server/sales.db-journal
 *.log
+*.traineddata
 
 # Uploads & Backups (keep folders but ignore contents)
 server/uploads/*
@@ -24,3 +25,4 @@ server/backups/*
 # OS files
 .DS_Store
 Thumbs.db
+

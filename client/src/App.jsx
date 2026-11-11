@@ -221,12 +221,6 @@ export default function App() {
                 You are viewing the <strong>Shared Sales Sheet</strong> in verified Read-Only mode. All numbers, dates, receipts, and summaries are live.
               </span>
             </div>
-            <button
-              onClick={() => setIsLoginOpen(true)}
-              className="text-amber-800 underline font-semibold hover:text-amber-950 ml-4 shrink-0"
-            >
-              Sign In with Admin Account
-            </button>
           </div>
         )}
 

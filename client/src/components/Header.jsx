@@ -57,15 +57,9 @@ export default function Header({
           {/* Action Buttons */}
           <div className="flex items-center space-x-2 sm:space-x-3">
             {isReadOnly ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 hidden md:inline">Viewing via shared link</span>
-                <button
-                  onClick={onOpenLogin}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
-                >
-                  <LogIn className="w-4 h-4 text-slate-500" />
-                  Admin Sign In
-                </button>
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium bg-slate-100 px-3 py-1.5 rounded-lg">
+                <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Live View Only</span>
               </div>
             ) : (
               <>

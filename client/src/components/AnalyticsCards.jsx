@@ -1,114 +1,106 @@
 import React from 'react';
-import { DollarSign, ShoppingCart, TrendingUp, BarChart2 } from 'lucide-react';
+import { DollarSign, ShoppingCart, TrendingUp, BarChart2, Banknote, CreditCard, Smartphone } from 'lucide-react';
 
 export default function AnalyticsCards({ stats, sales = [], currency = '$' }) {
   const totalAmount = stats?.totalAmount || 0;
+  const totalCash = stats?.totalCash || 0;
+  const totalCard = stats?.totalCard || 0;
+  const totalOther = stats?.totalOther || 0;
   const count = stats?.count || 0;
   const avg = stats?.averageAmount || 0;
 
-  // Compute category breakdown
-  const categoryMap = {};
-  sales.forEach(s => {
-    const cat = s.category || 'General';
-    categoryMap[cat] = (categoryMap[cat] || 0) + Number(s.amount || 0);
-  });
-  const topCategories = Object.entries(categoryMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
+  const cashPct = totalAmount > 0 ? Math.round((totalCash / totalAmount) * 100) : 0;
+  const cardPct = totalAmount > 0 ? Math.round((totalCard / totalAmount) * 100) : 0;
+  const otherPct = totalAmount > 0 ? Math.round((totalOther / totalAmount) * 100) : 0;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      {/* Total Revenue */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Total Revenue
-          </span>
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <DollarSign className="w-5 h-5" />
+    <div className="space-y-4 mb-6">
+      {/* Top 4 Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Revenue */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Total Revenue
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <DollarSign className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline">
+            <span className="text-2xl font-bold text-slate-900 tracking-tight">
+              {currency}{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+            <span>{count} transaction{count === 1 ? '' : 's'}</span>
+            <span>Avg: {currency}{avg.toFixed(0)}</span>
           </div>
         </div>
-        <div className="mt-3 flex items-baseline">
-          <span className="text-2xl font-bold text-slate-900 tracking-tight">
-            {currency}{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        </div>
-        <p className="mt-1 text-xs text-slate-500">
-          Across {count} recorded transaction{count === 1 ? '' : 's'}
-        </p>
-      </div>
 
-      {/* Total Sales Count */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Transactions
-          </span>
-          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-            <ShoppingCart className="w-5 h-5" />
+        {/* Total Cash */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+              <Banknote className="w-3.5 h-3.5 text-emerald-600" /> Cash Total
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-100/60 text-emerald-700 flex items-center justify-center">
+              <Banknote className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline">
+            <span className="text-2xl font-bold text-emerald-950 tracking-tight">
+              {currency}{totalCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+            <span>Physical cash</span>
+            <span className="font-semibold text-emerald-700">{cashPct}% of total</span>
           </div>
         </div>
-        <div className="mt-3 flex items-baseline">
-          <span className="text-2xl font-bold text-slate-900 tracking-tight">
-            {count}
-          </span>
-          <span className="ml-2 text-xs font-medium text-slate-500">entries</span>
-        </div>
-        <p className="mt-1 text-xs text-slate-500">
-          In selected timeframe
-        </p>
-      </div>
 
-      {/* Average Transaction */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Average Sale
-          </span>
-          <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-            <TrendingUp className="w-5 h-5" />
+        {/* Total Card */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-blue-800 uppercase tracking-wider flex items-center gap-1">
+              <CreditCard className="w-3.5 h-3.5 text-blue-600" /> Card / POS
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <CreditCard className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline">
+            <span className="text-2xl font-bold text-blue-950 tracking-tight">
+              {currency}{totalCard.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+            <span>Terminal / POS</span>
+            <span className="font-semibold text-blue-700">{cardPct}% of total</span>
           </div>
         </div>
-        <div className="mt-3 flex items-baseline">
-          <span className="text-2xl font-bold text-slate-900 tracking-tight">
-            {currency}{avg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        </div>
-        <p className="mt-1 text-xs text-slate-500">
-          Per transaction average
-        </p>
-      </div>
 
-      {/* Top Categories Breakdown */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Top Categories
-          </span>
-          <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-            <BarChart2 className="w-5 h-5" />
+        {/* Total Other / Transfers */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-purple-800 uppercase tracking-wider flex items-center gap-1">
+              <Smartphone className="w-3.5 h-3.5 text-purple-600" /> Transfers / Other
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+              <Smartphone className="w-5 h-5" />
+            </div>
           </div>
-        </div>
-        <div className="mt-2 space-y-1.5">
-          {topCategories.length > 0 ? (
-            topCategories.map(([cat, amt]) => {
-              const pct = totalAmount > 0 ? Math.round((amt / totalAmount) * 100) : 0;
-              return (
-                <div key={cat} className="flex justify-between items-center text-xs">
-                  <span className="text-slate-600 truncate max-w-[120px]">{cat}</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-semibold text-slate-800">{currency}{amt.toFixed(0)}</span>
-                    <span className="text-[10px] text-slate-400">({pct}%)</span>
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <p className="text-xs text-slate-400 py-1">No categorized sales yet</p>
-          )}
+          <div className="mt-3 flex items-baseline">
+            <span className="text-2xl font-bold text-purple-950 tracking-tight">
+              {currency}{totalOther.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+            <span>Banks, Mobile, Apps</span>
+            <span className="font-semibold text-purple-700">{otherPct}% of total</span>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-

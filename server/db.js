@@ -60,14 +60,29 @@ async function initDB() {
       receipt_url TEXT,
       created_by TEXT DEFAULT 'user',
       notes TEXT,
-      items TEXT
+      items TEXT,
+      cash_amount REAL DEFAULT 0,
+      card_amount REAL DEFAULT 0,
+      other_amount REAL DEFAULT 0,
+      other_payment_name TEXT,
+      payment_method TEXT DEFAULT 'Cash'
     )
   `);
 
-  try {
-    await db.runAsync(`ALTER TABLE sales ADD COLUMN items TEXT`);
-  } catch (e) {
-    // Column already exists
+  const cols = [
+    'ALTER TABLE sales ADD COLUMN items TEXT',
+    'ALTER TABLE sales ADD COLUMN cash_amount REAL DEFAULT 0',
+    'ALTER TABLE sales ADD COLUMN card_amount REAL DEFAULT 0',
+    'ALTER TABLE sales ADD COLUMN other_amount REAL DEFAULT 0',
+    'ALTER TABLE sales ADD COLUMN other_payment_name TEXT',
+    'ALTER TABLE sales ADD COLUMN payment_method TEXT DEFAULT "Cash"'
+  ];
+  for (const c of cols) {
+    try {
+      await db.runAsync(c);
+    } catch (e) {
+      // Column already exists
+    }
   }
 
   await db.runAsync(`

@@ -69,7 +69,7 @@ router.get('/data', async (req, res) => {
       return res.status(403).json({ error: 'Invalid or expired share link' });
     }
 
-    let query = `SELECT id, amount, currency, description, category, date, time, created_at, receipt_url, notes, items FROM sales WHERE 1=1`;
+    let query = `SELECT id, amount, currency, description, category, date, time, created_at, receipt_url, notes, items, cash_amount, card_amount, other_amount, other_payment_name, payment_method FROM sales WHERE 1=1`;
     const params = [];
 
     const { startDate, endDate } = getDateBoundaries(filter, cStart, cEnd);
@@ -100,8 +100,14 @@ router.get('/data', async (req, res) => {
     const sales = await db.allAsync(query, params);
 
     let totalAmount = 0;
+    let totalCash = 0;
+    let totalCard = 0;
+    let totalOther = 0;
     for (const item of sales) {
       totalAmount += Number(item.amount) || 0;
+      totalCash += Number(item.cash_amount) || 0;
+      totalCard += Number(item.card_amount) || 0;
+      totalOther += Number(item.other_amount) || 0;
     }
     const count = sales.length;
     const average = count > 0 ? (totalAmount / count) : 0;
@@ -111,6 +117,9 @@ router.get('/data', async (req, res) => {
       sales,
       stats: {
         totalAmount: Number(totalAmount.toFixed(2)),
+        totalCash: Number(totalCash.toFixed(2)),
+        totalCard: Number(totalCard.toFixed(2)),
+        totalOther: Number(totalOther.toFixed(2)),
         count,
         averageAmount: Number(average.toFixed(2))
       }

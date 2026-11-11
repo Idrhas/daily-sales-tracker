@@ -14,7 +14,10 @@ import {
   FileSpreadsheet,
   ChevronDown,
   ChevronRight,
-  Package
+  Package,
+  Banknote,
+  CreditCard,
+  Smartphone
 } from 'lucide-react';
 
 export default function SalesList({
@@ -61,6 +64,10 @@ export default function SalesList({
       category: s.category,
       date: s.date,
       time: s.time,
+      cash_amount: s.cash_amount,
+      card_amount: s.card_amount,
+      other_amount: s.other_amount,
+      other_payment_name: s.other_payment_name,
       notes: s.notes || ''
     });
   };
@@ -192,6 +199,7 @@ export default function SalesList({
               <th className="py-3 px-3">Date & Time</th>
               <th className="py-3 px-4">Sales Description / Items</th>
               <th className="py-3 px-3">Category</th>
+              <th className="py-3 px-3">Payment Split</th>
               <th className="py-3 px-4 text-right">Amount</th>
               <th className="py-3 px-3 text-center">Receipt</th>
               <th className="py-3 px-4">Proof & Audit</th>
@@ -201,13 +209,13 @@ export default function SalesList({
           <tbody className="divide-y divide-slate-100 text-xs">
             {loading ? (
               <tr>
-                <td colSpan={isReadOnly ? 7 : 8} className="py-12 text-center text-slate-400">
+                <td colSpan={isReadOnly ? 8 : 9} className="py-12 text-center text-slate-400">
                   Loading sales records...
                 </td>
               </tr>
             ) : sales.length === 0 ? (
               <tr>
-                <td colSpan={isReadOnly ? 7 : 8} className="py-12 text-center text-slate-400">
+                <td colSpan={isReadOnly ? 8 : 9} className="py-12 text-center text-slate-400">
                   No sales found for the selected period.
                 </td>
               </tr>
@@ -224,6 +232,9 @@ export default function SalesList({
                 } catch (e) {}
 
                 const hasItems = Array.isArray(parsedItems) && parsedItems.length > 0;
+                const cash = Number(sale.cash_amount) || 0;
+                const card = Number(sale.card_amount) || 0;
+                const other = Number(sale.other_amount) || 0;
 
                 return (
                   <React.Fragment key={sale.id}>
@@ -324,6 +335,32 @@ export default function SalesList({
                         )}
                       </td>
 
+                      {/* Payment Breakdown Badges */}
+                      <td className="py-3.5 px-3 whitespace-nowrap">
+                        <div className="flex flex-wrap items-center gap-1">
+                          {cash > 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/60" title="Cash">
+                              <Banknote className="w-3 h-3 text-emerald-600" /> {currency}{cash.toFixed(0)}
+                            </span>
+                          )}
+                          {card > 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-800 border border-blue-200/60" title="Card / POS">
+                              <CreditCard className="w-3 h-3 text-blue-600" /> {currency}{card.toFixed(0)}
+                            </span>
+                          )}
+                          {other > 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-800 border border-purple-200/60" title={sale.other_payment_name || 'Other/Transfer'}>
+                              <Smartphone className="w-3 h-3 text-purple-600" /> {currency}{other.toFixed(0)}
+                            </span>
+                          )}
+                          {cash === 0 && card === 0 && other === 0 && (
+                            <span className="text-[10px] text-slate-400">
+                              {sale.payment_method || 'Cash'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
                       {/* Amount */}
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         {isEditing ? (
@@ -414,16 +451,21 @@ export default function SalesList({
                       )}
                     </tr>
 
-                    {/* Expandable Itemized List Row */}
+                    {/* Expandable Itemized Breakdown & Payment Details */}
                     {hasItems && isExpanded && (
                       <tr className="bg-slate-50/70 border-b border-slate-100">
-                        <td colSpan={isReadOnly ? 7 : 8} className="py-3 px-6">
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-                            <div className="p-2.5 bg-slate-100/70 border-b border-slate-200 flex justify-between items-center text-xs font-semibold text-slate-700">
-                              <span>Itemized Breakdown ({parsedItems.length} items)</span>
-                              <span className="text-emerald-700 font-bold">
-                                Total: {currency}{Number(sale.amount).toFixed(2)}
-                              </span>
+                        <td colSpan={isReadOnly ? 8 : 9} className="py-3 px-6">
+                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs space-y-2">
+                            <div className="p-2.5 bg-slate-100/70 border-b border-slate-200 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
+                              <span>Itemized List ({parsedItems.length} items)</span>
+                              <div className="flex items-center gap-3">
+                                {cash > 0 && <span className="text-emerald-700">Cash: {currency}{cash.toFixed(2)}</span>}
+                                {card > 0 && <span className="text-blue-700">Card: {currency}{card.toFixed(2)}</span>}
+                                {other > 0 && <span className="text-purple-700">{sale.other_payment_name || 'Other'}: {currency}{other.toFixed(2)}</span>}
+                                <span className="text-slate-900 font-bold border-l pl-3 border-slate-300">
+                                  Total: {currency}{Number(sale.amount).toFixed(2)}
+                                </span>
+                              </div>
                             </div>
                             <table className="w-full text-left text-xs">
                               <thead>

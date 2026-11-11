@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   PlusCircle, 
   Plus, 
@@ -12,10 +12,15 @@ import {
   Sparkles, 
   CheckCircle, 
   X, 
-  Image as ImageIcon,
-  Loader2,
-  ListPlus,
-  Receipt
+  Image as ImageIcon, 
+  Loader2, 
+  ListPlus, 
+  Receipt,
+  CreditCard,
+  Banknote,
+  Smartphone,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 
 const DEFAULT_ITEM = () => ({
@@ -36,8 +41,14 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
   });
   const [notes, setNotes] = useState('');
   
-  // Itemized List / Table
+  // Itemized List
   const [items, setItems] = useState([DEFAULT_ITEM()]);
+
+  // Payment Breakdown
+  const [cashAmount, setCashAmount] = useState('');
+  const [cardAmount, setCardAmount] = useState('');
+  const [otherAmount, setOtherAmount] = useState('');
+  const [otherName, setOtherName] = useState('Bank Transfer');
 
   // Receipt & OCR
   const [receiptFile, setReceiptFile] = useState(null);
@@ -59,6 +70,14 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
     return sum + (qty * price);
   }, 0);
 
+  // Compute total paid across payment methods
+  const cAmt = parseFloat(cashAmount) || 0;
+  const kAmt = parseFloat(cardAmount) || 0;
+  const oAmt = parseFloat(otherAmount) || 0;
+  const totalPaid = cAmt + kAmt + oAmt;
+  const difference = grandTotal - totalPaid;
+
+  // Auto-sync cash amount if user hasn't typed a custom payment split
   const handleItemChange = (index, field, value) => {
     setItems((prev) => {
       const copy = [...prev];
@@ -73,11 +92,36 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
 
   const removeItemRow = (index) => {
     if (items.length <= 1) {
-      // Clear row instead of removing the last one
       setItems([DEFAULT_ITEM()]);
       return;
     }
     setItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Payment quick-action buttons
+  const setAllCash = () => {
+    setCashAmount(grandTotal > 0 ? grandTotal.toFixed(2) : '');
+    setCardAmount('');
+    setOtherAmount('');
+  };
+
+  const setAllCard = () => {
+    setCardAmount(grandTotal > 0 ? grandTotal.toFixed(2) : '');
+    setCashAmount('');
+    setOtherAmount('');
+  };
+
+  const setAllOther = () => {
+    setOtherAmount(grandTotal > 0 ? grandTotal.toFixed(2) : '');
+    setCashAmount('');
+    setCardAmount('');
+  };
+
+  const setSplitEvenly = () => {
+    const half = (grandTotal / 2).toFixed(2);
+    setCashAmount(half);
+    setCardAmount(half);
+    setOtherAmount('');
   };
 
   const handleFileChange = async (e) => {
@@ -125,7 +169,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           detected.push(`Merchant: "${ocrDesc}"`);
         }
         if (ocrAmt) {
-          // Pre-populate first row with extracted total
           setItems([
             {
               id: Date.now(),
@@ -135,6 +178,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
               price: String(ocrAmt)
             }
           ]);
+          setCashAmount(String(ocrAmt));
           detected.push(`Total: ${currency}${ocrAmt}`);
         }
 
@@ -163,7 +207,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Filter valid items
     const validItems = items.filter(it => it.name.trim() !== '' || (parseFloat(it.price) > 0));
     if (validItems.length === 0 && grandTotal <= 0) {
       setError('Please add at least one item with a name or price');
@@ -192,7 +235,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
         }
       }
 
-      // Generate description title if not set
       let finalTitle = transactionTitle.trim();
       if (!finalTitle) {
         if (validItems.length > 0) {
@@ -205,8 +247,24 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
         }
       }
 
-      // Main category (take category of first item or General)
       const primaryCategory = validItems.length > 0 ? validItems[0].category : 'Retail';
+
+      // Default payment to full Cash if none entered
+      let finalCash = parseFloat(cashAmount) || 0;
+      let finalCard = parseFloat(cardAmount) || 0;
+      let finalOther = parseFloat(otherAmount) || 0;
+
+      if (finalCash === 0 && finalCard === 0 && finalOther === 0) {
+        finalCash = grandTotal;
+      }
+
+      let paymentMethod = 'Cash';
+      if (finalCard > 0 && finalCash > 0) paymentMethod = 'Split';
+      else if (finalCard > 0 && finalOther > 0) paymentMethod = 'Split';
+      else if (finalCash > 0 && finalOther > 0) paymentMethod = 'Split';
+      else if (finalCard > 0) paymentMethod = 'Card';
+      else if (finalOther > 0) paymentMethod = otherName || 'Transfer';
+      else paymentMethod = 'Cash';
 
       const res = await fetch('/api/sales', {
         method: 'POST',
@@ -229,7 +287,12 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
             qty: parseFloat(it.qty) || 1,
             price: parseFloat(it.price) || 0,
             total: Number(((parseFloat(it.qty) || 1) * (parseFloat(it.price) || 0)).toFixed(2))
-          }))
+          })),
+          cash_amount: finalCash,
+          card_amount: finalCard,
+          other_amount: finalOther,
+          other_payment_name: otherName,
+          payment_method: paymentMethod
         })
       });
 
@@ -243,6 +306,9 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
       // Reset
       setTransactionTitle('');
       setNotes('');
+      setCashAmount('');
+      setCardAmount('');
+      setOtherAmount('');
       setItems([DEFAULT_ITEM()]);
       clearReceipt();
 
@@ -263,8 +329,8 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
             <ListPlus className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-slate-900">Record Sales Entry (Itemized Table)</h2>
-            <p className="text-xs text-slate-500">Add multiple items per sale, calculate totals, and attach receipts</p>
+            <h2 className="text-sm font-bold text-slate-900">Record Sales Entry (Items & Payment Breakdown)</h2>
+            <p className="text-xs text-slate-500">Enter multiple items, attach receipts, and specify Cash, Card, or Transfer</p>
           </div>
         </div>
 
@@ -282,7 +348,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Top Metadata Row: Transaction Title, Date, Time, Receipt Upload */}
+        {/* Top Metadata: Title, Date, Time, Receipt */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
           <div className="md:col-span-5">
             <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -294,7 +360,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                 type="text"
                 value={transactionTitle}
                 onChange={(e) => setTransactionTitle(e.target.value)}
-                placeholder="e.g. Afternoon Retail Batch, Client Invoice #102"
+                placeholder="e.g. Daily Counter Sales, Customer Invoice #104"
                 className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
               />
             </div>
@@ -357,7 +423,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           </div>
         </div>
 
-        {/* OCR Result Banner */}
         {ocrMessage && (
           <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -366,7 +431,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
         )}
 
         {/* The Items Table */}
-        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
@@ -389,7 +454,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                       {idx + 1}
                     </td>
 
-                    {/* Item Description */}
                     <td className="py-2 px-3">
                       <input
                         type="text"
@@ -400,7 +464,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                       />
                     </td>
 
-                    {/* Category */}
                     <td className="py-2 px-3">
                       <select
                         value={it.category}
@@ -416,7 +479,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                       </select>
                     </td>
 
-                    {/* Quantity */}
                     <td className="py-2 px-3">
                       <input
                         type="number"
@@ -428,7 +490,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                       />
                     </td>
 
-                    {/* Unit Price */}
                     <td className="py-2 px-3">
                       <div className="relative">
                         <span className="absolute left-2 top-1.5 text-slate-400 text-xs font-semibold">
@@ -446,12 +507,10 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                       </div>
                     </td>
 
-                    {/* Line Total */}
                     <td className="py-2 px-3 text-right font-bold text-slate-800">
                       {currency}{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
 
-                    {/* Delete Row */}
                     <td className="py-2 px-2 text-center">
                       <button
                         type="button"
@@ -466,7 +525,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                 );
               })}
             </tbody>
-            {/* Table Footer with Add Row Button and Grand Total */}
             <tfoot>
               <tr className="bg-slate-50 border-t border-slate-200">
                 <td colSpan={4} className="py-2.5 px-3">
@@ -480,7 +538,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                   </button>
                 </td>
                 <td className="py-2.5 px-3 text-right text-xs font-bold text-slate-600 uppercase">
-                  Grand Total:
+                  Sales Grand Total:
                 </td>
                 <td className="py-2.5 px-3 text-right font-bold text-base text-emerald-700">
                   {currency}{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -491,7 +549,161 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           </table>
         </div>
 
-        {/* Notes & Save Button */}
+        {/* PAYMENT METHOD BREAKDOWN (CASH, CARD, OTHER) */}
+        <div className="bg-slate-50/80 rounded-xl border border-slate-200/90 p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200">
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Banknote className="w-4 h-4 text-emerald-600" />
+                Payment Method Breakdown
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Specify amounts received in Cash, Card, or Transfers/Other
+              </p>
+            </div>
+
+            {/* Quick Fill Pills */}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-[11px] text-slate-400 mr-1 font-medium">Quick Fill:</span>
+              <button
+                type="button"
+                onClick={setAllCash}
+                className="px-2.5 py-1 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-lg text-[11px] font-medium transition"
+              >
+                All Cash
+              </button>
+              <button
+                type="button"
+                onClick={setAllCard}
+                className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 rounded-lg text-[11px] font-medium transition"
+              >
+                All Card
+              </button>
+              <button
+                type="button"
+                onClick={setAllOther}
+                className="px-2.5 py-1 bg-white hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 border border-slate-200 rounded-lg text-[11px] font-medium transition"
+              >
+                All Transfer
+              </button>
+              <button
+                type="button"
+                onClick={setSplitEvenly}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-medium transition"
+              >
+                Split 50/50
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            {/* Cash */}
+            <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-emerald-800">
+                  <Banknote className="w-4 h-4 text-emerald-600" /> Cash Received
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Physical bills</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2 text-slate-400 text-xs font-bold">{currency}</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={cashAmount}
+                  onChange={(e) => setCashAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-7 pr-3 py-1.5 text-xs font-semibold text-slate-900 border border-slate-200 rounded-lg outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            {/* Card / POS */}
+            <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-blue-800">
+                  <CreditCard className="w-4 h-4 text-blue-600" /> Card / POS
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Debit / Credit</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2 text-slate-400 text-xs font-bold">{currency}</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={cardAmount}
+                  onChange={(e) => setCardAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-7 pr-3 py-1.5 text-xs font-semibold text-slate-900 border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Other / Transfer */}
+            <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-semibold text-purple-800 flex items-center gap-1.5">
+                  <Smartphone className="w-4 h-4 text-purple-600" /> Other Payment
+                </span>
+                <select
+                  value={otherName}
+                  onChange={(e) => setOtherName(e.target.value)}
+                  className="text-[11px] font-medium border border-slate-200 rounded px-1.5 py-0.5 bg-slate-50 text-slate-700 outline-none"
+                >
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Mobile Money">Mobile Money</option>
+                  <option value="Zelle / CashApp">Zelle / CashApp</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Online Portal">Online Portal</option>
+                  <option value="Store Credit">Store Credit</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="relative">
+                <span className="absolute left-3 top-2 text-slate-400 text-xs font-bold">{currency}</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={otherAmount}
+                  onChange={(e) => setOtherAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-7 pr-3 py-1.5 text-xs font-semibold text-slate-900 border border-slate-200 rounded-lg outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Reconciliation Status Bar */}
+          <div className="flex flex-wrap items-center justify-between pt-1 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">Total Allocated Payment:</span>
+              <span className="font-bold text-slate-900">{currency}{totalPaid.toFixed(2)}</span>
+            </div>
+
+            {grandTotal > 0 && (
+              <div>
+                {Math.abs(difference) < 0.01 ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-full">
+                    <Check className="w-3.5 h-3.5" /> Exactly Balanced with Total
+                  </span>
+                ) : difference > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-100/80 px-2.5 py-0.5 rounded-full">
+                    <AlertCircle className="w-3.5 h-3.5" /> Remaining: {currency}{difference.toFixed(2)} (or will default to Cash)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-100/80 px-2.5 py-0.5 rounded-full">
+                    Overallocated: +{currency}{Math.abs(difference).toFixed(2)}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Transaction Notes & Submit Button */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-1">
           <input
             type="text"

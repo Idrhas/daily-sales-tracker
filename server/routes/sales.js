@@ -75,8 +75,14 @@ router.get('/', requireAuth, async (req, res) => {
 
     // Calculate aggregated statistics
     let totalAmount = 0;
+    let totalCash = 0;
+    let totalCard = 0;
+    let totalOther = 0;
     for (const item of sales) {
       totalAmount += Number(item.amount) || 0;
+      totalCash += Number(item.cash_amount) || 0;
+      totalCard += Number(item.card_amount) || 0;
+      totalOther += Number(item.other_amount) || 0;
     }
     const count = sales.length;
     const average = count > 0 ? (totalAmount / count) : 0;
@@ -85,6 +91,9 @@ router.get('/', requireAuth, async (req, res) => {
       sales,
       stats: {
         totalAmount: Number(totalAmount.toFixed(2)),
+        totalCash: Number(totalCash.toFixed(2)),
+        totalCard: Number(totalCard.toFixed(2)),
+        totalOther: Number(totalOther.toFixed(2)),
         count,
         averageAmount: Number(average.toFixed(2))
       }
@@ -98,7 +107,22 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/sales - Record a new sale
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { amount, currency = '$', description, category = 'General', date, time, receipt_url, notes, items } = req.body;
+    const { 
+      amount, 
+      currency = '$', 
+      description, 
+      category = 'General', 
+      date, 
+      time, 
+      receipt_url, 
+      notes, 
+      items,
+      cash_amount,
+      card_amount,
+      other_amount,
+      other_payment_name,
+      payment_method
+    } = req.body;
 
     const itemsJson = items ? (typeof items === 'string' ? items : JSON.stringify(items)) : null;
     let finalAmount = amount;
@@ -120,6 +144,22 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Amount and description (or items list) are required' });
     }
 
+    // Determine payment amounts
+    let cash = cash_amount !== undefined ? Number(cash_amount) : 0;
+    let card = card_amount !== undefined ? Number(card_amount) : 0;
+    let other = other_amount !== undefined ? Number(other_amount) : 0;
+    let pMethod = payment_method;
+
+    if (cash === 0 && card === 0 && other === 0) {
+      cash = Number(finalAmount);
+      pMethod = 'Cash';
+    } else if (!pMethod) {
+      if (cash > 0 && (card > 0 || other > 0)) pMethod = 'Split';
+      else if (card > 0) pMethod = 'Card';
+      else if (other > 0) pMethod = other_payment_name || 'Other';
+      else pMethod = 'Cash';
+    }
+
     const now = new Date();
     const finalDate = date || now.toISOString().split('T')[0];
     const finalTime = time || now.toTimeString().split(' ')[0].substring(0, 5);
@@ -127,9 +167,9 @@ router.post('/', requireAuth, async (req, res) => {
     const createdAt = now.toISOString();
 
     const result = await db.runAsync(
-      `INSERT INTO sales (amount, currency, description, category, date, time, created_at, receipt_url, created_by, notes, items)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [Number(finalAmount), currency, finalDesc.trim(), category, finalDate, finalTime, createdAt, receipt_url || null, req.user.username, notes || null, itemsJson]
+      `INSERT INTO sales (amount, currency, description, category, date, time, created_at, receipt_url, created_by, notes, items, cash_amount, card_amount, other_amount, other_payment_name, payment_method)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [Number(finalAmount), currency, finalDesc.trim(), category, finalDate, finalTime, createdAt, receipt_url || null, req.user.username, notes || null, itemsJson, cash, card, other, other_payment_name || null, pMethod]
     );
 
     const saleId = result.lastID;
@@ -148,8 +188,7 @@ router.post('/', requireAuth, async (req, res) => {
           description: finalDesc.trim(),
           date: finalDate,
           time: finalTime,
-          receipt_url: receipt_url || null,
-          itemsCount: Array.isArray(items) ? items.length : 0
+          payment: { cash, card, other, method: pMethod }
         })
       ]
     );
@@ -166,7 +205,22 @@ router.post('/', requireAuth, async (req, res) => {
 router.put('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { amount, currency, description, category, date, time, receipt_url, notes, items } = req.body;
+    const { 
+      amount, 
+      currency, 
+      description, 
+      category, 
+      date, 
+      time, 
+      receipt_url, 
+      notes, 
+      items,
+      cash_amount,
+      card_amount,
+      other_amount,
+      other_payment_name,
+      payment_method
+    } = req.body;
 
     const existing = await db.getAsync(`SELECT * FROM sales WHERE id = ?`, [id]);
     if (!existing) {
@@ -176,7 +230,6 @@ router.put('/:id', requireAuth, async (req, res) => {
     const updatedAt = new Date().toISOString();
     const itemsJson = items !== undefined ? (typeof items === 'string' ? items : JSON.stringify(items)) : existing.items;
 
-    // Prepare updated fields (created_at is intentionally preserved and cannot be changed!)
     const updatedAmount = amount !== undefined ? Number(amount) : existing.amount;
     const updatedCurrency = currency || existing.currency;
     const updatedDesc = description !== undefined ? description.trim() : existing.description;
@@ -185,35 +238,31 @@ router.put('/:id', requireAuth, async (req, res) => {
     const updatedTime = time || existing.time;
     const updatedReceipt = receipt_url !== undefined ? receipt_url : existing.receipt_url;
     const updatedNotes = notes !== undefined ? notes : existing.notes;
+    const updatedCash = cash_amount !== undefined ? Number(cash_amount) : (existing.cash_amount || 0);
+    const updatedCard = card_amount !== undefined ? Number(card_amount) : (existing.card_amount || 0);
+    const updatedOther = other_amount !== undefined ? Number(other_amount) : (existing.other_amount || 0);
+    const updatedOtherName = other_payment_name !== undefined ? other_payment_name : existing.other_payment_name;
+    const updatedMethod = payment_method !== undefined ? payment_method : existing.payment_method;
 
     await db.runAsync(
       `UPDATE sales
-       SET amount = ?, currency = ?, description = ?, category = ?, date = ?, time = ?, updated_at = ?, receipt_url = ?, notes = ?, items = ?
+       SET amount = ?, currency = ?, description = ?, category = ?, date = ?, time = ?, updated_at = ?, receipt_url = ?, notes = ?, items = ?,
+           cash_amount = ?, card_amount = ?, other_amount = ?, other_payment_name = ?, payment_method = ?
        WHERE id = ?`,
-      [updatedAmount, updatedCurrency, updatedDesc, updatedCategory, updatedDate, updatedTime, updatedAt, updatedReceipt, updatedNotes, itemsJson, id]
+      [updatedAmount, updatedCurrency, updatedDesc, updatedCategory, updatedDate, updatedTime, updatedAt, updatedReceipt, updatedNotes, itemsJson,
+       updatedCash, updatedCard, updatedOther, updatedOtherName, updatedMethod, id]
     );
 
-    // Record detailed change history in audit logs
     const changes = {
       previous: {
         amount: existing.amount,
         description: existing.description,
-        category: existing.category,
-        date: existing.date,
-        time: existing.time,
-        receipt_url: existing.receipt_url,
-        notes: existing.notes,
-        items: existing.items
+        payment: { cash: existing.cash_amount, card: existing.card_amount, other: existing.other_amount, method: existing.payment_method }
       },
       current: {
         amount: updatedAmount,
         description: updatedDesc,
-        category: updatedCategory,
-        date: updatedDate,
-        time: updatedTime,
-        receipt_url: updatedReceipt,
-        notes: updatedNotes,
-        items: itemsJson
+        payment: { cash: updatedCash, card: updatedCard, other: updatedOther, method: updatedMethod }
       }
     };
 

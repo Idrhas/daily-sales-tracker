@@ -1,0 +1,121 @@
+import React from 'react';
+import { 
+  DollarSign, 
+  Share2, 
+  Database, 
+  Lock, 
+  Unlock, 
+  LogOut, 
+  LogIn, 
+  Eye, 
+  Calendar 
+} from 'lucide-react';
+
+export default function Header({ 
+  user, 
+  isReadOnly, 
+  onOpenLogin, 
+  onLogout, 
+  onOpenShare, 
+  onOpenBackups,
+  onExitReadOnly 
+}) {
+  const currentDate = new Date().toLocaleDateString(undefined, { 
+    weekday: 'short', 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric' 
+  });
+
+  return (
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          {/* Logo & App Name */}
+          <div className="flex items-center space-x-3">
+            <div className="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
+              <DollarSign className="h-6 w-6 stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-lg text-slate-900 tracking-tight">SalesTracker</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  Daily
+                </span>
+                {isReadOnly && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 flex items-center gap-1">
+                    <Eye className="w-3 h-3" /> Read-Only Mode
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 hidden sm:flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> {currentDate}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            {isReadOnly ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 hidden md:inline">Viewing via shared link</span>
+                <button
+                  onClick={onOpenLogin}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
+                >
+                  <LogIn className="w-4 h-4 text-slate-500" />
+                  Admin Sign In
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={onOpenShare}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
+                  title="Share Read-Only View"
+                >
+                  <Share2 className="w-4 h-4 text-emerald-600" />
+                  <span className="hidden sm:inline">Share Link</span>
+                </button>
+
+                <button
+                  onClick={onOpenBackups}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
+                  title="Manage Backups & Cloud Sync"
+                >
+                  <Database className="w-4 h-4 text-indigo-600" />
+                  <span className="hidden sm:inline">Backups</span>
+                </button>
+
+                {user ? (
+                  <div className="flex items-center pl-2 border-l border-slate-200 space-x-2">
+                    <div className="text-right hidden sm:block">
+                      <p className="text-xs font-semibold text-slate-800">{user.username}</p>
+                      <p className="text-[10px] text-slate-500 uppercase">{user.role}</p>
+                    </div>
+                    <button
+                      onClick={onLogout}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition"
+                      title="Log Out"
+                    >
+                      <LogOut className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={onOpenLogin}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    Sign In
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+

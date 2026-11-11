@@ -5,3 +5,4 @@
     { "source": "/uploads/(.*)", "destination": "/api/index.js" }
   ]
 }
+

@@ -37,7 +37,73 @@ function getDateBoundaries(filter, customStart, customEnd) {
   return { startDate, endDate };
 }
 
-// GET /api/sales - List sales with filters, sorting, search
+// GET /api/sales/public - Public read-only sales list for regular visitors (no auth required)
+router.get('/public', async (req, res) => {
+  try {
+    const { filter = 'all', startDate: cStart, endDate: cEnd, search = '', sortBy = 'date', sortOrder = 'DESC' } = req.query;
+
+    let query = `SELECT id, amount, currency, description, category, date, time, created_at, receipt_url, notes, items, cash_amount, card_amount, other_amount, other_payment_name, payment_method FROM sales WHERE 1=1`;
+    const params = [];
+
+    const { startDate, endDate } = getDateBoundaries(filter, cStart, cEnd);
+    if (startDate && endDate) {
+      query += ` AND date BETWEEN ? AND ?`;
+      params.push(startDate, endDate);
+    } else if (startDate) {
+      query += ` AND date >= ?`;
+      params.push(startDate);
+    }
+
+    if (search.trim()) {
+      query += ` AND (description LIKE ? OR category LIKE ? OR notes LIKE ?)`;
+      const searchParam = `%${search.trim()}%`;
+      params.push(searchParam, searchParam, searchParam);
+    }
+
+    const allowedSortColumns = ['date', 'amount', 'created_at', 'description'];
+    const validSortBy = allowedSortColumns.includes(sortBy) ? sortBy : 'date';
+    const validSortOrder = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    if (validSortBy === 'date') {
+      query += ` ORDER BY date ${validSortOrder}, time ${validSortOrder}, id ${validSortOrder}`;
+    } else {
+      query += ` ORDER BY ${validSortBy} ${validSortOrder}, id DESC`;
+    }
+
+    const sales = await db.allAsync(query, params);
+
+    let totalAmount = 0;
+    let totalCash = 0;
+    let totalCard = 0;
+    let totalOther = 0;
+    for (const item of sales) {
+      totalAmount += Number(item.amount) || 0;
+      totalCash += Number(item.cash_amount) || 0;
+      totalCard += Number(item.card_amount) || 0;
+      totalOther += Number(item.other_amount) || 0;
+    }
+    const count = sales.length;
+    const average = count > 0 ? (totalAmount / count) : 0;
+
+    res.json({
+      readOnly: true,
+      sales,
+      stats: {
+        totalAmount: Number(totalAmount.toFixed(2)),
+        totalCash: Number(totalCash.toFixed(2)),
+        totalCard: Number(totalCard.toFixed(2)),
+        totalOther: Number(totalOther.toFixed(2)),
+        count,
+        averageAmount: Number(average.toFixed(2))
+      }
+    });
+  } catch (err) {
+    console.error('Fetch public sales error:', err);
+    res.status(500).json({ error: 'Failed to fetch sales' });
+  }
+});
+
+// GET /api/sales - List sales with filters, sorting, search (Admin authenticated)
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { filter = 'all', startDate: cStart, endDate: cEnd, search = '', sortBy = 'date', sortOrder = 'DESC' } = req.query;

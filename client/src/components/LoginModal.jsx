@@ -3,7 +3,7 @@ import { Lock, User, Key, X, AlertCircle } from 'lucide-react';
 
 export default function LoginModal({ isOpen, onClose, onLoginSuccess }) {
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -99,9 +99,6 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }) {
             </div>
           </div>
 
-          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600">
-            Default credentials: <strong className="text-slate-800">admin</strong> / <strong className="text-slate-800">admin</strong>
-          </div>
 
           <button
             type="submit"

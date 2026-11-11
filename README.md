@@ -17,7 +17,8 @@ The application will launch at: **`http://localhost:5000`**
 
 ### 2. Default Login
 - **Username:** `admin`
-- **Password:** `admin`
+- **Password:** `sales2024` (built-in default). **Change it:** set the `ADMIN_PASSWORD` environment variable, and also set a long random `JWT_SECRET`, before putting the site online.
+- Note: the old docs said `admin` / `admin`. That never worked.
 
 ---
 

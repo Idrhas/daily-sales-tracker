@@ -4,6 +4,12 @@ const bcrypt = require('bcryptjs');
 
 const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
+// Admin password. Set ADMIN_PASSWORD in the environment to override the built-in default.
+const DEFAULT_ADMIN_HASH = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6'; // 'sales2024'
+function getAdminHash() {
+  return process.env.ADMIN_PASSWORD ? bcrypt.hashSync(process.env.ADMIN_PASSWORD, 10) : DEFAULT_ADMIN_HASH;
+}
+
 // Only attempt to load sqlite3 when NOT in a serverless environment
 let sqlite3 = null;
 if (!isServerless) {
@@ -24,7 +30,7 @@ const jsonStorePath = isServerless ? path.join('/tmp', 'sales_store.json') : pat
 
 function createPureJsStore() {
   // Pre-computed hash for 'sales2024'
-  const hash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
+  const hash = getAdminHash();
   const now = new Date();
   const formatD = (d) => d.toISOString().split('T')[0];
 
@@ -136,7 +142,7 @@ function loadStore() {
       // Ensure admin password hash is updated to 'sales2024'
       const admin = memoryStore.users && memoryStore.users.find(u => u.username === 'admin');
       if (admin) {
-        admin.password_hash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
+        admin.password_hash = getAdminHash();
       }
       return memoryStore;
     }
@@ -450,7 +456,7 @@ async function initDB() {
 
     // Seed default admin user
     const existingAdmin = await db.getAsync(`SELECT * FROM users WHERE username = ?`, ['admin']);
-    const adminHash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
+    const adminHash = getAdminHash();
     if (!existingAdmin) {
       await db.runAsync(
         `INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)`,

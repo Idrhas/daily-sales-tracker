@@ -3,9 +3,12 @@ const path = require('path');
 const cron = require('node-cron');
 const { db } = require('./db');
 
-const backupsDir = path.join(__dirname, 'backups');
+const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const backupsDir = isServerless ? path.join('/tmp', 'backups') : path.join(__dirname, 'backups');
 if (!fs.existsSync(backupsDir)) {
-  fs.mkdirSync(backupsDir, { recursive: true });
+  try {
+    fs.mkdirSync(backupsDir, { recursive: true });
+  } catch (e) {}
 }
 
 let activeCronJob = null;

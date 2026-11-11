@@ -6,9 +6,12 @@ const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
 const { parseReceiptImage } = require('../ocr');
 
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const uploadsDir = isServerless ? path.join('/tmp', 'uploads') : path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  } catch (e) {}
 }
 
 const storage = multer.diskStorage({

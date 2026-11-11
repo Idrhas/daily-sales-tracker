@@ -3,7 +3,22 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
-const dbPath = path.join(__dirname, 'sales.db');
+const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const defaultDbPath = path.join(__dirname, 'sales.db');
+let dbPath = defaultDbPath;
+
+if (isServerless) {
+  const tmpDbPath = path.join('/tmp', 'sales.db');
+  if (!fs.existsSync(tmpDbPath) && fs.existsSync(defaultDbPath)) {
+    try {
+      fs.copyFileSync(defaultDbPath, tmpDbPath);
+    } catch (e) {
+      console.error('Failed to copy database to /tmp:', e);
+    }
+  }
+  dbPath = tmpDbPath;
+}
+
 const db = new sqlite3.Database(dbPath);
 
 // Helper for promise-based queries

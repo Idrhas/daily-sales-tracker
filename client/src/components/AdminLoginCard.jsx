@@ -19,7 +19,14 @@ export default function AdminLoginCard({ onLoginSuccess, onGoToPublic }) {
         body: JSON.stringify({ username, password })
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      let data = {};
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error('Server returned an unexpected response. Please try again.');
+      }
+
       if (!res.ok) {
         throw new Error(data.error || 'Failed to sign in');
       }

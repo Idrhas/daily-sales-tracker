@@ -1,9 +1,12 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
 const app = require('../../server/app');
 const { initDB } = require('../../server/db');
 
 let dbInitialized = false;
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (!dbInitialized) {
     try {
       await initDB();
@@ -13,5 +16,4 @@ module.exports = async (req, res) => {
     }
   }
   return app(req, res);
-};
-
+}

@@ -26,18 +26,35 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   } catch (e) {}
 }
-app.use('/uploads', express.static(uploadsDir));
+app.use(['/api/uploads', '/uploads'], express.static(uploadsDir));
 
-// API Routes
+// API Routes (supports both /api/xxx and direct /xxx on serverless)
 app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+
 app.use('/api/sales', salesRoutes);
+app.use('/sales', salesRoutes);
+
 app.use('/api/share', shareRoutes);
+app.use('/share', shareRoutes);
+
 app.use('/api/backups', backupsRoutes);
+app.use('/backups', backupsRoutes);
+
 app.use('/api/upload', ocrRoutes);
+app.use('/upload', ocrRoutes);
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({ status: 'ok', serverTime: new Date().toISOString() });
+});
+
+// JSON 404 for any unmatched API calls
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/sales') || req.path.startsWith('/share') || req.path.startsWith('/backups') || req.path.startsWith('/upload')) {
+    return res.status(404).json({ error: `Endpoint not found: ${req.method} ${req.originalUrl || req.url}` });
+  }
+  next();
 });
 
 // Serve frontend build if public or client/dist exists

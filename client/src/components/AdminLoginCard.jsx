@@ -24,7 +24,8 @@ export default function AdminLoginCard({ onLoginSuccess, onGoToPublic }) {
       try {
         data = JSON.parse(text);
       } catch (parseErr) {
-        throw new Error('Server returned an unexpected response. Please try again.');
+        const snippet = text.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+        throw new Error(`Server returned HTTP ${res.status}${snippet ? ': ' + snippet : ''}`);
       }
 
       if (!res.ok) {

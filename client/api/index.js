@@ -1,8 +1,16 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
-const app = require('../../server/app');
-const { initDB } = require('../../server/db');
+let app = null;
+let initDB = null;
+
+try {
+  app = require('../server/app');
+  initDB = require('../server/db').initDB;
+} catch (e) {
+  app = require('../../server/app');
+  initDB = require('../../server/db').initDB;
+}
 
 let dbInitialized = false;
 

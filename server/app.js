@@ -12,7 +12,7 @@ const ocrRoutes = require('./routes/ocr');
 
 const app = express();
 
-// Enable CORS
+// CORS
 app.use(cors());
 
 // Parse JSON and form data
@@ -24,18 +24,26 @@ const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) {}
 }
-app.use('/uploads', express.static(uploadsDir));
+app.use(['/api/uploads', '/uploads'], express.static(uploadsDir));
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/sales', salesRoutes);
-app.use('/api/share', shareRoutes);
-app.use('/api/backups', backupsRoutes);
-app.use('/api/upload', ocrRoutes);
+// API Routes (dual mount)
+app.use(['/api/auth', '/auth'], authRoutes);
+app.use(['/api/sales', '/sales'], salesRoutes);
+app.use(['/api/share', '/share'], shareRoutes);
+app.use(['/api/backups', '/backups'], backupsRoutes);
+app.use(['/api/upload', '/upload'], ocrRoutes);
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({ status: 'ok', serverTime: new Date().toISOString() });
+});
+
+// JSON 404 for unmatched API routes
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/sales') || req.path.startsWith('/share') || req.path.startsWith('/backups') || req.path.startsWith('/upload')) {
+    return res.status(404).json({ error: `Not found: ${req.method} ${req.originalUrl || req.url}` });
+  }
+  next();
 });
 
 // Serve frontend build
@@ -46,9 +54,6 @@ const distPath = fs.existsSync(publicDist) ? publicDist : (fs.existsSync(clientD
 if (distPath) {
   app.use(express.static(distPath));
   app.use((req, res) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
-      return res.status(404).json({ error: `Not found: ${req.method} ${req.path}` });
-    }
     res.sendFile(path.join(distPath, 'index.html'));
   });
 } else {

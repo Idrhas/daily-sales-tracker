@@ -2,6 +2,8 @@
   "version": 2,
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    { "source": "/api/(.*)", "destination": "/api/index?__path=$1" },
+    { "source": "/uploads/(.*)", "destination": "/api/index?__path=uploads/$1" },
+    { "source": "/((?!api|uploads).*)", "destination": "/index.html" }
   ]
 }

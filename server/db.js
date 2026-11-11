@@ -2,29 +2,23 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
+const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
+// Only attempt to load sqlite3 when NOT in a serverless environment
 let sqlite3 = null;
-try {
-  sqlite3 = require('sqlite3').verbose();
-} catch (e) {
-  console.log('Native sqlite3 module not available in this environment. Using pure-JS database engine.');
+if (!isServerless) {
+  try {
+    sqlite3 = require('sqlite3').verbose();
+  } catch (e) {
+    console.log('Native sqlite3 module not available. Using pure-JS database engine.');
+  }
 }
 
-const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const defaultDbPath = path.join(__dirname, 'sales.db');
 let dbPath = defaultDbPath;
 
-if (isServerless) {
-  const tmpDbPath = path.join('/tmp', 'sales.db');
-  if (!fs.existsSync(tmpDbPath) && fs.existsSync(defaultDbPath)) {
-    try {
-      fs.copyFileSync(defaultDbPath, tmpDbPath);
-    } catch (e) {}
-  }
-  dbPath = tmpDbPath;
-}
-
 // ----------------------------------------------------
-// PURE-JS FALLBACK DATABASE ENGINE (100% portable)
+// PURE-JS DATABASE ENGINE (100% portable for Serverless)
 // ----------------------------------------------------
 const jsonStorePath = isServerless ? path.join('/tmp', 'sales_store.json') : path.join(__dirname, 'sales_store.json');
 
@@ -139,6 +133,11 @@ function loadStore() {
     if (fs.existsSync(jsonStorePath)) {
       const data = fs.readFileSync(jsonStorePath, 'utf8');
       memoryStore = JSON.parse(data);
+      // Ensure admin password hash is updated to 'sales2024'
+      const admin = memoryStore.users && memoryStore.users.find(u => u.username === 'admin');
+      if (admin) {
+        admin.password_hash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
+      }
       return memoryStore;
     }
   } catch (e) {}
@@ -158,9 +157,9 @@ function saveStore() {
 // UNIFIED DB INTERFACE
 // ----------------------------------------------------
 let nativeDb = null;
-let usePureJs = !sqlite3;
+let usePureJs = isServerless || !sqlite3;
 
-if (sqlite3) {
+if (!isServerless && sqlite3) {
   try {
     nativeDb = new sqlite3.Database(dbPath, (err) => {
       if (err) {
@@ -283,13 +282,13 @@ const db = {
     }
 
     if (cleanSql.startsWith('UPDATE USERS')) {
-      const userId = Number(params[1]);
-      const user = store.users.find(u => u.id === userId);
+      const user = store.users.find(u => u.username === 'admin' || u.id === Number(params[1]));
       if (user) {
         user.password_hash = params[0];
         saveStore();
+        return { changes: 1 };
       }
-      return { changes: 1 };
+      return { changes: 0 };
     }
 
     return { changes: 0 };
@@ -390,83 +389,85 @@ const db = {
 };
 
 async function initDB() {
-  if (!usePureJs && nativeDb) {
-    try {
-      await db.runAsync(`
-        CREATE TABLE IF NOT EXISTS users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'admin',
-          created_at TEXT NOT NULL
-        )
-      `);
+  if (usePureJs || isServerless || !nativeDb) {
+    usePureJs = true;
+    loadStore();
+    console.log('Database initialized successfully (Engine: Pure-JS)');
+    return;
+  }
 
-      await db.runAsync(`
-        CREATE TABLE IF NOT EXISTS sales (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          amount REAL NOT NULL,
-          currency TEXT NOT NULL DEFAULT '$',
-          description TEXT NOT NULL,
-          category TEXT DEFAULT 'General',
-          date TEXT NOT NULL,
-          time TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT,
-          receipt_url TEXT,
-          created_by TEXT DEFAULT 'user',
-          notes TEXT,
-          items TEXT,
-          cash_amount REAL DEFAULT 0,
-          card_amount REAL DEFAULT 0,
-          other_amount REAL DEFAULT 0,
-          other_payment_name TEXT,
-          payment_method TEXT DEFAULT 'Cash'
-        )
-      `);
+  try {
+    await db.runAsync(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'admin',
+        created_at TEXT NOT NULL
+      )
+    `);
 
-      await db.runAsync(`
-        CREATE TABLE IF NOT EXISTS audit_logs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          sale_id INTEGER,
-          action TEXT NOT NULL,
-          changed_by TEXT NOT NULL,
-          changed_at TEXT NOT NULL,
-          details TEXT
-        )
-      `);
+    await db.runAsync(`
+      CREATE TABLE IF NOT EXISTS sales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL NOT NULL,
+        currency TEXT NOT NULL DEFAULT '$',
+        description TEXT NOT NULL,
+        category TEXT DEFAULT 'General',
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT,
+        receipt_url TEXT,
+        created_by TEXT DEFAULT 'user',
+        notes TEXT,
+        items TEXT,
+        cash_amount REAL DEFAULT 0,
+        card_amount REAL DEFAULT 0,
+        other_amount REAL DEFAULT 0,
+        other_payment_name TEXT,
+        payment_method TEXT DEFAULT 'Cash'
+      )
+    `);
 
-      await db.runAsync(`
-        CREATE TABLE IF NOT EXISTS settings (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL
-        )
-      `);
+    await db.runAsync(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id INTEGER,
+        action TEXT NOT NULL,
+        changed_by TEXT NOT NULL,
+        changed_at TEXT NOT NULL,
+        details TEXT
+      )
+    `);
 
-      // Seed default admin user
-      const existingAdmin = await db.getAsync(`SELECT * FROM users WHERE username = ?`, ['admin']);
-      // Pre-computed hash for 'sales2024' - always update to ensure password is current
-      const adminHash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
-      if (!existingAdmin) {
-        await db.runAsync(
-          `INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)`,
-          ['admin', adminHash, 'admin', new Date().toISOString()]
-        );
-      } else {
-        await db.runAsync(`UPDATE users SET password_hash = ? WHERE username = ?`, [adminHash, 'admin']);
-      }
+    await db.runAsync(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
 
-      // Seed default share token
-      const shareToken = await db.getAsync(`SELECT * FROM settings WHERE key = 'share_token'`);
-      if (!shareToken) {
-        await db.runAsync(`INSERT INTO settings (key, value) VALUES ('share_token', ?)`, ['public-view-34wran9r']);
-      }
-    } catch (e) {
-      console.log('SQLite init failed, activating pure-JS store:', e.message);
-      usePureJs = true;
-      loadStore();
+    // Seed default admin user
+    const existingAdmin = await db.getAsync(`SELECT * FROM users WHERE username = ?`, ['admin']);
+    const adminHash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
+    if (!existingAdmin) {
+      await db.runAsync(
+        `INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)`,
+        ['admin', adminHash, 'admin', new Date().toISOString()]
+      );
+    } else {
+      await db.runAsync(`UPDATE users SET password_hash = ? WHERE username = ?`, [adminHash, 'admin']);
     }
-  } else {
+
+    // Seed default share token
+    const shareToken = await db.getAsync(`SELECT * FROM settings WHERE key = 'share_token'`);
+    if (!shareToken) {
+      await db.runAsync(`INSERT INTO settings (key, value) VALUES ('share_token', ?)`, ['public-view-34wran9r']);
+    }
+  } catch (e) {
+    console.log('SQLite init failed, activating pure-JS store:', e.message);
+    usePureJs = true;
     loadStore();
   }
   console.log('Database initialized successfully (Engine:', usePureJs ? 'Pure-JS' : 'SQLite', ')');

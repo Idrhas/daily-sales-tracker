@@ -26,51 +26,51 @@ const uploadsDir = process.env.VERCEL
 if (!fs.existsSync(uploadsDir)) {
   try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) {}
 }
-app.use('/uploads', express.static(uploadsDir));
+app.use(['/api/uploads', '/uploads'], express.static(uploadsDir));
 
 // -------------------------
-// API ROUTES
+// API ROUTES (dual mount)
 // -------------------------
-app.use('/api/auth', authRoutes);
-app.use('/api/sales', salesRoutes);
-app.use('/api/share', shareRoutes);
-app.use('/api/backups', backupsRoutes);
-app.use('/api/upload', ocrRoutes);
+app.use(['/api/auth', '/auth'], authRoutes);
+app.use(['/api/sales', '/sales'], salesRoutes);
+app.use(['/api/share', '/share'], shareRoutes);
+app.use(['/api/backups', '/backups'], backupsRoutes);
+app.use(['/api/upload', '/upload'], ocrRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({ status: 'ok', engine: process.env.VERCEL ? 'serverless' : 'node', serverTime: new Date().toISOString() });
+});
+
+// JSON 404 for unmatched API routes
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/sales') || req.path.startsWith('/share') || req.path.startsWith('/backups') || req.path.startsWith('/upload')) {
+    return res.status(404).json({ error: `Not found: ${req.method} ${req.originalUrl || req.url}` });
+  }
+  next();
 });
 
 // -------------------------
 // STATIC FILES + SPA FALLBACK
 // -------------------------
-// Find the built client assets
 const possibleDists = [
-  path.join(__dirname, '..', 'dist'),       // client/dist when running in client/server
-  path.join(__dirname, '..', '..', 'dist'), // root dist
+  path.join(__dirname, '..', 'dist'),
+  path.join(__dirname, '..', '..', 'dist'),
   path.join(__dirname, '..', '..', 'public')
 ];
 const distPath = possibleDists.find(d => fs.existsSync(d));
 
 if (distPath) {
-  // Serve static assets (js, css, images, etc.)
   app.use(express.static(distPath));
-
-  // All non-API routes serve index.html (SPA routing)
   app.use((req, res) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
-      return res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.path}` });
-    }
     const indexPath = path.join(distPath, 'index.html');
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);
     } else {
-      res.status(404).json({ error: 'Frontend build not found. Run npm run build in client/.' });
+      res.status(404).json({ error: 'Frontend build not found.' });
     }
   });
 } else {
-  // No static files - return JSON for all unknown routes
   app.use((req, res) => {
     res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
   });

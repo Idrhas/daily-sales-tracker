@@ -115,3 +115,4 @@ export default function AdminLoginCard({ onLoginSuccess, onGoToPublic }) {
     </div>
   );
 }
+

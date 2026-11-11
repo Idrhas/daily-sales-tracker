@@ -10,10 +10,15 @@ import ShareModal from './components/ShareModal';
 import AdminLoginCard from './components/AdminLoginCard';
 
 export default function App() {
-  // Route state: check if URL is /admin or #admin
-  const [isAdminView, setIsAdminView] = useState(() => {
-    return window.location.pathname.startsWith('/admin') || window.location.hash.startsWith('#admin');
-  });
+  const checkIsAdmin = () => {
+    const path = (window.location.pathname || '').toLowerCase();
+    const hash = (window.location.hash || '').toLowerCase();
+    const search = (window.location.search || '').toLowerCase();
+    return path.includes('admin') || hash.includes('admin') || search.includes('admin');
+  };
+
+  // Route state
+  const [isAdminView, setIsAdminView] = useState(checkIsAdmin);
 
   // Auth state
   const [user, setUser] = useState(null);
@@ -37,10 +42,10 @@ export default function App() {
   const [activeAuditSale, setActiveAuditSale] = useState(null);
   const [shareToken, setShareToken] = useState('');
 
-  // 1. Listen to popstate / hashchange to support navigating between / and /admin
+  // 1. Listen to popstate / hashchange
   useEffect(() => {
     const handleLocationChange = () => {
-      setIsAdminView(window.location.pathname.startsWith('/admin') || window.location.hash.startsWith('#admin'));
+      setIsAdminView(checkIsAdmin());
     };
     window.addEventListener('popstate', handleLocationChange);
     window.addEventListener('hashchange', handleLocationChange);
@@ -101,17 +106,14 @@ export default function App() {
       }
 
       if (isAdminView && token) {
-        // Admin view (with edit permissions)
         endpoint = `/api/sales?${queryParams.toString()}`;
         headers = { Authorization: `Bearer ${token}` };
       } else {
-        // Public / Regular view (no auth needed)
         endpoint = `/api/sales/public?${queryParams.toString()}`;
       }
 
       const res = await fetch(endpoint, { headers });
       if (res.status === 401 && isAdminView) {
-        // Token expired
         localStorage.removeItem('sales_tracker_token');
         localStorage.removeItem('sales_tracker_user');
         setToken(null);
@@ -135,12 +137,14 @@ export default function App() {
   }, [fetchSales]);
 
   // Navigation helpers
-  const goToPublic = () => {
+  const goToPublic = (e) => {
+    if (e) e.preventDefault();
     window.history.pushState({}, '', '/');
     setIsAdminView(false);
   };
 
-  const goToAdmin = () => {
+  const goToAdmin = (e) => {
+    if (e) e.preventDefault();
     window.history.pushState({}, '', '/admin');
     setIsAdminView(true);
   };
@@ -264,7 +268,27 @@ export default function App() {
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
-        <p>Daily Sales Tracker • Verified Records & Immutable Audit Trails</p>
+        <div className="flex items-center justify-center gap-2">
+          <span>Daily Sales Tracker • Verified Records & Immutable Audit Trails</span>
+          {!isAdminView ? (
+            <a
+              href="/admin"
+              onClick={goToAdmin}
+              className="text-slate-400 hover:text-slate-600 transition ml-2"
+              title="Admin Portal"
+            >
+              • Admin Portal
+            </a>
+          ) : (
+            <a
+              href="/"
+              onClick={goToPublic}
+              className="text-slate-400 hover:text-slate-600 transition ml-2"
+            >
+              • Public View
+            </a>
+          )}
+        </div>
       </footer>
 
       {/* Modals (Only accessible when logged in as admin) */}

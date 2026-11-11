@@ -3,7 +3,7 @@ import { Lock, User, Key, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function AdminLoginCard({ onLoginSuccess, onGoToPublic }) {
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin');
+  const [password, setPassword] = useState('sales2024');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -98,7 +98,7 @@ export default function AdminLoginCard({ onLoginSuccess, onGoToPublic }) {
           </div>
 
           <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600">
-            Default credentials: <strong className="text-slate-800">admin</strong> / <strong className="text-slate-800">admin</strong>
+            Default credentials: <strong className="text-slate-800">admin</strong> / <strong className="text-slate-800">sales2024</strong>
           </div>
 
           <button

@@ -29,9 +29,8 @@ if (isServerless) {
 const jsonStorePath = isServerless ? path.join('/tmp', 'sales_store.json') : path.join(__dirname, 'sales_store.json');
 
 function createPureJsStore() {
-  const defaultPassword = 'admin';
-  const salt = bcrypt.genSaltSync(10);
-  const hash = bcrypt.hashSync(defaultPassword, salt);
+  // Pre-computed hash for 'sales2024' - avoids bcrypt overhead on cold start
+  const hash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
   const now = new Date();
   const formatD = (d) => d.toISOString().split('T')[0];
 
@@ -447,13 +446,16 @@ async function initDB() {
       // Seed default admin user
       const existingAdmin = await db.getAsync(`SELECT * FROM users WHERE username = ?`, ['admin']);
       if (!existingAdmin) {
-        const defaultPassword = 'admin';
-        const salt = bcrypt.genSaltSync(10);
-        const hash = bcrypt.hashSync(defaultPassword, salt);
+        // Pre-computed hash for 'sales2024'
+        const hash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
         await db.runAsync(
           `INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)`,
           ['admin', hash, 'admin', new Date().toISOString()]
         );
+      } else {
+        // Always update hash on seed so the password is current
+        const hash = '$2b$10$T7ncXSipLVR9j4HKltZOhu7SqG3.I0l99Frl2iZT18IuJspPTi2x6';
+        await db.runAsync(`UPDATE users SET password_hash = ? WHERE username = ?`, [hash, 'admin']);
       }
 
       // Seed default share token

@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -12,63 +12,67 @@ const ocrRoutes = require('./routes/ocr');
 
 const app = express();
 
-// Enable CORS
-app.use(cors());
+// CORS - allow all origins for serverless
+app.use(cors({ origin: '*' }));
 
 // Parse JSON and form data
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Serve uploaded receipts statically
-const uploadsDir = path.join(__dirname, 'uploads');
+const uploadsDir = process.env.VERCEL
+  ? path.join('/tmp', 'uploads')
+  : path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
-  try {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  } catch (e) {}
+  try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) {}
 }
-app.use(['/api/uploads', '/uploads'], express.static(uploadsDir));
+app.use('/uploads', express.static(uploadsDir));
 
-// API Routes (supports both /api/xxx and direct /xxx on serverless)
+// -------------------------
+// API ROUTES
+// -------------------------
 app.use('/api/auth', authRoutes);
-app.use('/auth', authRoutes);
-
 app.use('/api/sales', salesRoutes);
-app.use('/sales', salesRoutes);
-
 app.use('/api/share', shareRoutes);
-app.use('/share', shareRoutes);
-
 app.use('/api/backups', backupsRoutes);
-app.use('/backups', backupsRoutes);
-
 app.use('/api/upload', ocrRoutes);
-app.use('/upload', ocrRoutes);
 
-// Health check endpoint
-app.get(['/api/health', '/health'], (req, res) => {
-  res.json({ status: 'ok', serverTime: new Date().toISOString() });
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', engine: process.env.VERCEL ? 'serverless' : 'node', serverTime: new Date().toISOString() });
 });
 
-// JSON 404 for any unmatched API calls
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/sales') || req.path.startsWith('/share') || req.path.startsWith('/backups') || req.path.startsWith('/upload')) {
-    return res.status(404).json({ error: `Endpoint not found: ${req.method} ${req.originalUrl || req.url}` });
-  }
-  next();
-});
+// -------------------------
+// STATIC FILES + SPA FALLBACK
+// -------------------------
+// Find the built client assets
+const possibleDists = [
+  path.join(__dirname, '..', 'dist'),       // client/dist when running in client/server
+  path.join(__dirname, '..', '..', 'dist'), // root dist
+  path.join(__dirname, '..', '..', 'public')
+];
+const distPath = possibleDists.find(d => fs.existsSync(d));
 
-// Serve frontend build if public or client/dist exists
-const publicDist = path.join(__dirname, '..', 'public');
-const clientDist = path.join(__dirname, '..', 'client', 'dist');
-const distPath = fs.existsSync(publicDist) ? publicDist : clientDist;
-
-if (fs.existsSync(distPath)) {
+if (distPath) {
+  // Serve static assets (js, css, images, etc.)
   app.use(express.static(distPath));
-  app.use((req, res, next) => {
+
+  // All non-API routes serve index.html (SPA routing)
+  app.use((req, res) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
-      return next();
+      return res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.path}` });
     }
-    res.sendFile(path.join(distPath, 'index.html'));
+    const indexPath = path.join(distPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).json({ error: 'Frontend build not found. Run npm run build in client/.' });
+    }
+  });
+} else {
+  // No static files - return JSON for all unknown routes
+  app.use((req, res) => {
+    res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
   });
 }
 

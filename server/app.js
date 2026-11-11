@@ -16,59 +16,44 @@ const app = express();
 app.use(cors());
 
 // Parse JSON and form data
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Serve uploaded receipts statically
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
-  try {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  } catch (e) {}
+  try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) {}
 }
-app.use(['/api/uploads', '/uploads'], express.static(uploadsDir));
+app.use('/uploads', express.static(uploadsDir));
 
-// API Routes (supports both /api/xxx and direct /xxx on serverless)
+// API Routes
 app.use('/api/auth', authRoutes);
-app.use('/auth', authRoutes);
-
 app.use('/api/sales', salesRoutes);
-app.use('/sales', salesRoutes);
-
 app.use('/api/share', shareRoutes);
-app.use('/share', shareRoutes);
-
 app.use('/api/backups', backupsRoutes);
-app.use('/backups', backupsRoutes);
-
 app.use('/api/upload', ocrRoutes);
-app.use('/upload', ocrRoutes);
 
 // Health check endpoint
-app.get(['/api/health', '/health'], (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', serverTime: new Date().toISOString() });
 });
 
-// JSON 404 for any unmatched API calls
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/sales') || req.path.startsWith('/share') || req.path.startsWith('/backups') || req.path.startsWith('/upload')) {
-    return res.status(404).json({ error: `Endpoint not found: ${req.method} ${req.originalUrl || req.url}` });
-  }
-  next();
-});
-
-// Serve frontend build if public or client/dist exists
+// Serve frontend build
 const publicDist = path.join(__dirname, '..', 'public');
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
-const distPath = fs.existsSync(publicDist) ? publicDist : clientDist;
+const distPath = fs.existsSync(publicDist) ? publicDist : (fs.existsSync(clientDist) ? clientDist : null);
 
-if (fs.existsSync(distPath)) {
+if (distPath) {
   app.use(express.static(distPath));
-  app.use((req, res, next) => {
+  app.use((req, res) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
-      return next();
+      return res.status(404).json({ error: `Not found: ${req.method} ${req.path}` });
     }
     res.sendFile(path.join(distPath, 'index.html'));
+  });
+} else {
+  app.use((req, res) => {
+    res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
   });
 }
 

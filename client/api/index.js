@@ -1,6 +1,7 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
+// Load the Express app - try client/server first, then fall back to root server
 let app = null;
 let initDB = null;
 let loadError = null;
@@ -8,72 +9,42 @@ let loadError = null;
 try {
   app = require('../server/app');
   initDB = require('../server/db').initDB;
+  console.log('[api] Loaded from ../server/app');
 } catch (e1) {
   try {
     app = require('../../server/app');
     initDB = require('../../server/db').initDB;
+    console.log('[api] Loaded from ../../server/app');
   } catch (e2) {
-    loadError = (e1 && e1.stack) || (e1 && e1.message) || String(e1);
-    console.error('Failed to load server app:', loadError);
+    loadError = e1.stack || e1.message || String(e1);
+    console.error('[api] Failed to load server app. Error 1:', e1.message, 'Error 2:', e2.message);
   }
 }
 
 let dbInitialized = false;
 
-function normalizeUrl(req) {
-  // 1. If query.__path is passed from rewrite (e.g. /api/(.*) -> ?__path=$1)
-  if (req.query && req.query.__path) {
-    const cleanPath = req.query.__path.startsWith('/') ? req.query.__path : '/' + req.query.__path;
-    return cleanPath.startsWith('/api') ? cleanPath : '/api' + cleanPath;
-  }
-
-  // 2. If catch-all query.all is passed (e.g. [...all].js -> ['auth', 'login'])
-  if (req.query && req.query.all) {
-    const sub = Array.isArray(req.query.all) ? req.query.all.join('/') : req.query.all;
-    return '/api/' + sub;
-  }
-
-  // 3. If x-matched-path header is present from Vercel
-  const matched = req.headers && (req.headers['x-matched-path'] || req.headers['x-vercel-matched-path']);
-  if (matched && !matched.includes('index.js')) {
-    return matched;
-  }
-
-  // 4. If x-forwarded-url header is present
-  if (req.headers && req.headers['x-forwarded-url']) {
-    try {
-      const parsed = new URL(req.headers['x-forwarded-url'], 'http://localhost');
-      if (parsed.pathname && !parsed.pathname.includes('index.js')) {
-        return parsed.pathname + parsed.search;
-      }
-    } catch (e) {}
-  }
-
-  // 5. Default to req.url
-  return req.url;
-}
-
 export default async function handler(req, res) {
+  // If the app failed to load, return a JSON error
   if (!app) {
     res.setHeader('Content-Type', 'application/json');
     return res.status(500).json({
-      error: 'Backend initialization failed: ' + (loadError || 'Unknown load error')
+      error: 'Server initialization failed',
+      detail: loadError || 'Unknown error'
     });
   }
 
+  // Initialize the database once per cold start
   if (!dbInitialized && initDB) {
     try {
       await initDB();
       dbInitialized = true;
     } catch (err) {
-      console.error('Database initialization error on serverless:', err);
+      console.error('[api] Database init error:', err.message);
     }
   }
 
-  const resolvedUrl = normalizeUrl(req);
-  if (resolvedUrl) {
-    req.url = resolvedUrl;
-  }
-
+  // On Vercel, when ALL routes rewrite to /api/index, req.url is the ORIGINAL path
+  // e.g. a request to /api/auth/login arrives with req.url = '/api/auth/login'
+  // Express will match /api/auth correctly since routes are mounted at /api/auth
   return app(req, res);
 }

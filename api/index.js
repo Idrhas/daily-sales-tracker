@@ -1,5 +1,14 @@
-const app = require('../server/app');
-const { initDB } = require('../server/db');
+let app = null;
+let initDB = null;
+let loadError = null;
+
+try {
+  app = require('../server/app');
+  initDB = require('../server/db').initDB;
+} catch (e) {
+  loadError = e.stack || e.message || String(e);
+  console.error('Root API failed to load server app:', loadError);
+}
 
 let dbInitialized = false;
 
@@ -16,11 +25,26 @@ function normalizeUrl(req) {
   if (matched && !matched.includes('index.js')) {
     return matched;
   }
+  if (req.headers && req.headers['x-forwarded-url']) {
+    try {
+      const parsed = new URL(req.headers['x-forwarded-url'], 'http://localhost');
+      if (parsed.pathname && !parsed.pathname.includes('index.js')) {
+        return parsed.pathname + parsed.search;
+      }
+    } catch (e) {}
+  }
   return req.url;
 }
 
 module.exports = async (req, res) => {
-  if (!dbInitialized) {
+  if (!app) {
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(500).json({
+      error: 'Backend initialization failed: ' + (loadError || 'Unknown load error')
+    });
+  }
+
+  if (!dbInitialized && initDB) {
     try {
       await initDB();
       dbInitialized = true;

@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const cron = require('node-cron');
+let cron = null;
+try {
+  cron = require('node-cron');
+} catch (e) {
+  console.log('node-cron not available in this environment');
+}
 const { db } = require('./db');
 
 const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);

@@ -1,7 +1,24 @@
-const { createWorker } = require('tesseract.js');
+let createWorker = null;
+try {
+  createWorker = require('tesseract.js').createWorker;
+} catch (e) {
+  console.log('Tesseract OCR engine not available in this environment');
+}
 const fs = require('fs');
 
 async function parseReceiptImage(imagePath) {
+  if (!createWorker) {
+    return {
+      success: false,
+      error: 'OCR processing is not available on this serverless instance',
+      rawText: '',
+      extracted: {
+        amount: null,
+        date: null,
+        description: ''
+      }
+    };
+  }
   let worker = null;
   try {
     worker = await createWorker('eng');

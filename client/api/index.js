@@ -3,13 +3,19 @@ const require = createRequire(import.meta.url);
 
 let app = null;
 let initDB = null;
+let loadError = null;
 
 try {
   app = require('../server/app');
   initDB = require('../server/db').initDB;
-} catch (e) {
-  app = require('../../server/app');
-  initDB = require('../../server/db').initDB;
+} catch (e1) {
+  try {
+    app = require('../../server/app');
+    initDB = require('../../server/db').initDB;
+  } catch (e2) {
+    loadError = (e1 && e1.stack) || (e1 && e1.message) || String(e1);
+    console.error('Failed to load server app:', loadError);
+  }
 }
 
 let dbInitialized = false;
@@ -33,12 +39,29 @@ function normalizeUrl(req) {
     return matched;
   }
 
-  // 4. Default to req.url
+  // 4. If x-forwarded-url header is present
+  if (req.headers && req.headers['x-forwarded-url']) {
+    try {
+      const parsed = new URL(req.headers['x-forwarded-url'], 'http://localhost');
+      if (parsed.pathname && !parsed.pathname.includes('index.js')) {
+        return parsed.pathname + parsed.search;
+      }
+    } catch (e) {}
+  }
+
+  // 5. Default to req.url
   return req.url;
 }
 
 export default async function handler(req, res) {
-  if (!dbInitialized) {
+  if (!app) {
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(500).json({
+      error: 'Backend initialization failed: ' + (loadError || 'Unknown load error')
+    });
+  }
+
+  if (!dbInitialized && initDB) {
     try {
       await initDB();
       dbInitialized = true;

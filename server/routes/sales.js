@@ -206,8 +206,16 @@ router.post('/', requireAuth, async (req, res) => {
     let finalAmount = amount;
     let finalDesc = description;
 
-    // If items list provided, calculate amount from items if not given
-    if ((finalAmount === undefined || finalAmount === null || finalAmount === '') && Array.isArray(items) && items.length > 0) {
+    // Determine payment amounts
+    let cash = cash_amount !== undefined ? Number(cash_amount) : 0;
+    let card = card_amount !== undefined ? Number(card_amount) : 0;
+    let other = other_amount !== undefined ? Number(other_amount) : 0;
+    const paymentSum = cash + card + other;
+
+    // Prioritize Cash + Card total for the final transaction amount (ignoring unit price and line totals):
+    if (paymentSum > 0) {
+      finalAmount = paymentSum;
+    } else if ((finalAmount === undefined || finalAmount === null || finalAmount === '' || Number(finalAmount) === 0) && Array.isArray(items) && items.length > 0) {
       finalAmount = items.reduce((sum, it) => sum + (Number(it.total) || (Number(it.qty || 1) * Number(it.price || 0))), 0);
     }
 
@@ -222,10 +230,6 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Amount and description (or items list) are required' });
     }
 
-    // Determine payment amounts
-    let cash = cash_amount !== undefined ? Number(cash_amount) : 0;
-    let card = card_amount !== undefined ? Number(card_amount) : 0;
-    let other = other_amount !== undefined ? Number(other_amount) : 0;
     let pMethod = payment_method;
 
     if (cash === 0 && card === 0 && other === 0) {
@@ -315,7 +319,16 @@ router.put('/:id', requireAuth, async (req, res) => {
     const updatedAt = new Date().toISOString();
     const itemsJson = items !== undefined ? (typeof items === 'string' ? items : JSON.stringify(items)) : existing.items;
 
-    const updatedAmount = amount !== undefined ? Number(amount) : existing.amount;
+    let updatedCash = cash_amount !== undefined ? Number(cash_amount) : (existing.cash_amount || 0);
+    let updatedCard = card_amount !== undefined ? Number(card_amount) : (existing.card_amount || 0);
+    let updatedOther = other_amount !== undefined ? Number(other_amount) : (existing.other_amount || 0);
+    const updatedPaymentSum = updatedCash + updatedCard + updatedOther;
+
+    let updatedAmount = amount !== undefined ? Number(amount) : existing.amount;
+    if (updatedPaymentSum > 0) {
+      updatedAmount = updatedPaymentSum;
+    }
+
     const updatedCurrency = currency || existing.currency;
     const updatedDesc = description !== undefined ? description.trim() : existing.description;
     const updatedCategory = category !== undefined ? category : existing.category;
@@ -324,9 +337,6 @@ router.put('/:id', requireAuth, async (req, res) => {
     const incomingProof = proof_url !== undefined ? proof_url : receipt_url;
     const updatedReceipt = incomingProof !== undefined ? incomingProof : existing.receipt_url;
     const updatedNotes = notes !== undefined ? notes : existing.notes;
-    const updatedCash = cash_amount !== undefined ? Number(cash_amount) : (existing.cash_amount || 0);
-    const updatedCard = card_amount !== undefined ? Number(card_amount) : (existing.card_amount || 0);
-    const updatedOther = other_amount !== undefined ? Number(other_amount) : (existing.other_amount || 0);
     const updatedOtherName = other_payment_name !== undefined ? other_payment_name : existing.other_payment_name;
     const updatedMethod = payment_method !== undefined ? payment_method : existing.payment_method;
 

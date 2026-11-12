@@ -62,20 +62,23 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
 
   const fileInputRef = useRef(null);
 
-  // Compute grand total from all item rows
-  const grandTotal = items.reduce((sum, it) => {
+  // Compute line items subtotal (optional reference - unit price & line total can be left at zero)
+  const itemsSubtotal = items.reduce((sum, it) => {
     const qty = parseFloat(it.qty) || 0;
     const price = parseFloat(it.price) || 0;
     return sum + (qty * price);
   }, 0);
 
-  // Compute total paid across payment methods
+  // Compute total paid across payment methods (Cash, Card, Other)
   const cAmt = parseFloat(cashAmount) || 0;
   const kAmt = parseFloat(cardAmount) || 0;
   const oAmt = parseFloat(otherAmount) || 0;
-  const totalPaid = cAmt + kAmt + oAmt;
-  const difference = grandTotal - totalPaid;
-  const effectiveFinalTotal = grandTotal > 0 ? grandTotal : totalPaid;
+  const paymentTotal = cAmt + kAmt + oAmt;
+
+  // Final Total is focused on Cash and Card total:
+  // When cash/card amounts are entered, that is the definitive final total (ignoring line items).
+  // If payment fields are left blank, it falls back to itemsSubtotal if available.
+  const effectiveFinalTotal = paymentTotal > 0 ? paymentTotal : itemsSubtotal;
 
   // Auto-sync cash amount if user hasn't typed a custom payment split
   const handleItemChange = (index, field, value) => {
@@ -100,28 +103,34 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
 
   // Payment quick-action buttons
   const setAllCash = () => {
-    setCashAmount(grandTotal > 0 ? grandTotal.toFixed(2) : '');
+    const base = effectiveFinalTotal > 0 ? effectiveFinalTotal : itemsSubtotal;
+    setCashAmount(base > 0 ? base.toFixed(2) : '');
     setCardAmount('');
     setOtherAmount('');
   };
 
   const setAllCard = () => {
-    setCardAmount(grandTotal > 0 ? grandTotal.toFixed(2) : '');
+    const base = effectiveFinalTotal > 0 ? effectiveFinalTotal : itemsSubtotal;
+    setCardAmount(base > 0 ? base.toFixed(2) : '');
     setCashAmount('');
     setOtherAmount('');
   };
 
   const setAllOther = () => {
-    setOtherAmount(grandTotal > 0 ? grandTotal.toFixed(2) : '');
+    const base = effectiveFinalTotal > 0 ? effectiveFinalTotal : itemsSubtotal;
+    setOtherAmount(base > 0 ? base.toFixed(2) : '');
     setCashAmount('');
     setCardAmount('');
   };
 
   const setSplitEvenly = () => {
-    const half = (grandTotal / 2).toFixed(2);
-    setCashAmount(half);
-    setCardAmount(half);
-    setOtherAmount('');
+    const base = effectiveFinalTotal > 0 ? effectiveFinalTotal : itemsSubtotal;
+    if (base > 0) {
+      const half = (base / 2).toFixed(2);
+      setCashAmount(half);
+      setCardAmount(half);
+      setOtherAmount('');
+    }
   };
 
   const handleFileChange = async (e) => {
@@ -206,15 +215,29 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Allow items even if unit price and line total are left at 0!
     const validItems = items.filter(it => it.name.trim() !== '' || (parseFloat(it.price) > 0));
     let finalCash = parseFloat(cashAmount) || 0;
     let finalCard = parseFloat(cardAmount) || 0;
     let finalOther = parseFloat(otherAmount) || 0;
-    const computedTotal = grandTotal > 0 ? grandTotal : (finalCash + finalCard + finalOther);
+    const paymentSum = finalCash + finalCard + finalOther;
+
+    // Focus on Cash + Card total (unit price and line total are ignored for final total if payment is entered):
+    let computedTotal = paymentSum > 0 ? paymentSum : itemsSubtotal;
 
     if (validItems.length === 0 && computedTotal <= 0) {
-      setError('Please add item details or enter a cash/card payment amount');
+      setError('Please add item names or enter a Cash / Card payment amount');
       return;
+    }
+
+    if (computedTotal <= 0) {
+      setError('Please enter a Cash or Card payment amount to set the transaction total');
+      return;
+    }
+
+    // Default payment to full Cash if none typed but items had prices
+    if (finalCash === 0 && finalCard === 0 && finalOther === 0) {
+      finalCash = computedTotal;
     }
 
     setSubmitting(true);
@@ -253,11 +276,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
 
       // Default category to General as category selection is removed from entry form
       const primaryCategory = 'General';
-
-      // Default payment to full Cash if none entered
-      if (finalCash === 0 && finalCard === 0 && finalOther === 0) {
-        finalCash = computedTotal;
-      }
 
       let paymentMethod = 'Cash';
       if (finalCard > 0 && finalCash > 0) paymentMethod = 'Split';
@@ -456,7 +474,9 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                 <th className="py-2.5 px-3 w-8 text-center">#</th>
                 <th className="py-2.5 px-3">Item / Description</th>
                 <th className="py-2.5 px-3 w-24 text-center">Qty</th>
-                <th className="py-2.5 px-3 w-32 text-right">Unit Price</th>
+                <th className="py-2.5 px-3 w-32 text-right">
+                  Unit Price <span className="text-[10px] text-slate-400 font-normal block lowercase">(optional)</span>
+                </th>
                 <th className="py-2.5 px-3 w-32 text-right">Line Total</th>
                 <th className="py-2.5 px-2 w-10 text-center"></th>
               </tr>
@@ -539,11 +559,14 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                     <span>Add Item Row</span>
                   </button>
                 </td>
-                <td className="py-2.5 px-3 text-right text-xs font-bold text-slate-600 uppercase">
-                  Sales Grand Total:
+                <td className="py-2.5 px-3 text-right text-xs font-bold text-slate-500 uppercase">
+                  Items Subtotal:
                 </td>
-                <td className="py-2.5 px-3 text-right font-bold text-base text-emerald-700">
-                  {currency}{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <td className="py-2.5 px-3 text-right font-bold text-sm text-slate-700">
+                  {currency}{itemsSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {itemsSubtotal === 0 && (
+                    <span className="block text-[10px] text-slate-400 font-normal">($0.00 allowed)</span>
+                  )}
                 </td>
                 <td></td>
               </tr>
@@ -679,9 +702,9 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           </div>
 
           {/* Payment Reconciliation & Final Total Status Bar */}
-          <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-200 text-xs gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-slate-200 text-xs gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-slate-600 font-semibold text-[11px] uppercase tracking-wider">Payment Breakdown:</span>
+              <span className="text-slate-700 font-bold text-[11px] uppercase tracking-wider">Breakdown:</span>
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100/90 text-emerald-900 font-bold border border-emerald-300">
                 <Banknote className="w-3.5 h-3.5 text-emerald-700" /> Cash: {currency}{cAmt.toFixed(2)}
               </span>
@@ -698,28 +721,26 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                 </>
               )}
               <span className="text-slate-400 font-bold">=</span>
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-700 text-white font-extrabold shadow-2xs text-xs">
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-700 text-white font-extrabold shadow-sm text-xs">
                 Final Total: {currency}{effectiveFinalTotal.toFixed(2)}
               </span>
             </div>
 
-            {grandTotal > 0 && (
-              <div>
-                {Math.abs(difference) < 0.01 ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-full">
-                    <Check className="w-3.5 h-3.5" /> Balanced with Items Total
-                  </span>
-                ) : difference > 0 ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-100/80 px-2.5 py-0.5 rounded-full">
-                    <AlertCircle className="w-3.5 h-3.5" /> Remaining: {currency}{difference.toFixed(2)} (or will default to Cash)
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-100/80 px-2.5 py-0.5 rounded-full">
-                    Overallocated: +{currency}{Math.abs(difference).toFixed(2)}
-                  </span>
-                )}
-              </div>
-            )}
+            <div>
+              {paymentTotal > 0 ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-100/90 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                  <Check className="w-3.5 h-3.5 text-emerald-600" /> Total computed from Cash & Card
+                </span>
+              ) : itemsSubtotal > 0 ? (
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Using items subtotal (or enter Cash / Card above)
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400">
+                  Enter Cash and/or Card to set total
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

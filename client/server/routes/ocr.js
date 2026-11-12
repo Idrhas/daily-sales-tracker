@@ -40,8 +40,36 @@ const upload = multer({
   }
 });
 
-// POST /api/upload - Upload receipt image and optionally scan OCR
-router.post('/', requireAuth, upload.single('receipt'), async (req, res) => {
+// Middleware to support either 'receipt' or 'proof' field name
+const uploadProofOrReceipt = (req, res, next) => {
+  upload.single('receipt')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (req.file) return next();
+    upload.single('proof')(req, res, (err2) => {
+      if (err2) return res.status(400).json({ error: err2.message });
+      next();
+    });
+  });
+};
+
+// GET /api/upload/:filename - Serve single proof image
+router.get('/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const possiblePaths = [
+    path.join(uploadsDir, filename),
+    path.join(__dirname, '..', 'uploads', filename),
+    path.join('/tmp', 'uploads', filename)
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      return res.sendFile(p);
+    }
+  }
+  res.status(404).json({ error: 'Proof image not found' });
+});
+
+// POST /api/upload - Upload proof/receipt image and optionally scan OCR
+router.post('/', requireAuth, uploadProofOrReceipt, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file uploaded' });
@@ -53,13 +81,14 @@ router.post('/', requireAuth, upload.single('receipt'), async (req, res) => {
 
     let ocrResult = null;
     if (shouldScan) {
-      console.log('Running OCR on uploaded receipt:', req.file.filename);
+      console.log('Running OCR on uploaded proof/receipt:', req.file.filename);
       ocrResult = await parseReceiptImage(filePath);
     }
 
     res.json({
       success: true,
       fileUrl,
+      proofUrl: fileUrl,
       filename: req.file.filename,
       ocr: ocrResult ? {
         extracted: ocrResult.extracted,

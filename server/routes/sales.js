@@ -70,7 +70,12 @@ router.get('/public', async (req, res) => {
       query += ` ORDER BY ${validSortBy} ${validSortOrder}, id DESC`;
     }
 
-    const sales = await db.allAsync(query, params);
+    const rawSales = await db.allAsync(query, params);
+    const sales = rawSales.map(item => ({
+      ...item,
+      proof_url: item.receipt_url || item.proof_url || null,
+      receipt_url: item.receipt_url || item.proof_url || null
+    }));
 
     let totalAmount = 0;
     let totalCash = 0;
@@ -137,7 +142,12 @@ router.get('/', requireAuth, async (req, res) => {
       query += ` ORDER BY ${validSortBy} ${validSortOrder}, id DESC`;
     }
 
-    const sales = await db.allAsync(query, params);
+    const rawSales = await db.allAsync(query, params);
+    const sales = rawSales.map(item => ({
+      ...item,
+      proof_url: item.receipt_url || item.proof_url || null,
+      receipt_url: item.receipt_url || item.proof_url || null
+    }));
 
     // Calculate aggregated statistics
     let totalAmount = 0;
@@ -181,6 +191,7 @@ router.post('/', requireAuth, async (req, res) => {
       date, 
       time, 
       receipt_url, 
+      proof_url,
       notes, 
       items,
       cash_amount,
@@ -191,6 +202,7 @@ router.post('/', requireAuth, async (req, res) => {
     } = req.body;
 
     const itemsJson = items ? (typeof items === 'string' ? items : JSON.stringify(items)) : null;
+    const finalProofUrl = proof_url || receipt_url || null;
     let finalAmount = amount;
     let finalDesc = description;
 
@@ -235,7 +247,7 @@ router.post('/', requireAuth, async (req, res) => {
     const result = await db.runAsync(
       `INSERT INTO sales (amount, currency, description, category, date, time, created_at, receipt_url, created_by, notes, items, cash_amount, card_amount, other_amount, other_payment_name, payment_method)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [Number(finalAmount), currency, finalDesc.trim(), category, finalDate, finalTime, createdAt, receipt_url || null, req.user.username, notes || null, itemsJson, cash, card, other, other_payment_name || null, pMethod]
+      [Number(finalAmount), currency, finalDesc.trim(), category || 'General', finalDate, finalTime, createdAt, finalProofUrl, req.user.username, notes || null, itemsJson, cash, card, other, other_payment_name || null, pMethod]
     );
 
     const saleId = result.lastID;
@@ -260,7 +272,13 @@ router.post('/', requireAuth, async (req, res) => {
     );
 
     const newSale = await db.getAsync(`SELECT * FROM sales WHERE id = ?`, [saleId]);
-    res.status(201).json({ sale: newSale });
+    res.status(201).json({
+      sale: {
+        ...newSale,
+        proof_url: newSale.receipt_url,
+        receipt_url: newSale.receipt_url
+      }
+    });
   } catch (err) {
     console.error('Create sale error:', err);
     res.status(500).json({ error: 'Failed to record sale' });
@@ -279,6 +297,7 @@ router.put('/:id', requireAuth, async (req, res) => {
       date, 
       time, 
       receipt_url, 
+      proof_url,
       notes, 
       items,
       cash_amount,
@@ -302,7 +321,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     const updatedCategory = category !== undefined ? category : existing.category;
     const updatedDate = date || existing.date;
     const updatedTime = time || existing.time;
-    const updatedReceipt = receipt_url !== undefined ? receipt_url : existing.receipt_url;
+    const incomingProof = proof_url !== undefined ? proof_url : receipt_url;
+    const updatedReceipt = incomingProof !== undefined ? incomingProof : existing.receipt_url;
     const updatedNotes = notes !== undefined ? notes : existing.notes;
     const updatedCash = cash_amount !== undefined ? Number(cash_amount) : (existing.cash_amount || 0);
     const updatedCard = card_amount !== undefined ? Number(card_amount) : (existing.card_amount || 0);
@@ -339,7 +359,13 @@ router.put('/:id', requireAuth, async (req, res) => {
     );
 
     const updatedSale = await db.getAsync(`SELECT * FROM sales WHERE id = ?`, [id]);
-    res.json({ sale: updatedSale });
+    res.json({
+      sale: {
+        ...updatedSale,
+        proof_url: updatedSale.receipt_url,
+        receipt_url: updatedSale.receipt_url
+      }
+    });
   } catch (err) {
     console.error('Update sale error:', err);
     res.status(500).json({ error: 'Failed to update sale' });

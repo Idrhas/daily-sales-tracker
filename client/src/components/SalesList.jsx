@@ -201,21 +201,21 @@ export default function SalesList({
               <th className="py-3 px-3">Category</th>
               <th className="py-3 px-3">Payment Split</th>
               <th className="py-3 px-4 text-right">Amount</th>
-              <th className="py-3 px-3 text-center">Receipt</th>
-              <th className="py-3 px-4">Proof & Audit</th>
+              <th className="py-3 px-3 text-center">Proof</th>
+              {!isReadOnly && <th className="py-3 px-4 text-center">Audit Trail</th>}
               {!isReadOnly && <th className="py-3 px-4 text-center">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
             {loading ? (
               <tr>
-                <td colSpan={isReadOnly ? 8 : 9} className="py-12 text-center text-slate-400">
+                <td colSpan={isReadOnly ? 7 : 9} className="py-12 text-center text-slate-400">
                   Loading sales records...
                 </td>
               </tr>
             ) : sales.length === 0 ? (
               <tr>
-                <td colSpan={isReadOnly ? 8 : 9} className="py-12 text-center text-slate-400">
+                <td colSpan={isReadOnly ? 7 : 9} className="py-12 text-center text-slate-400">
                   No sales found for the selected period.
                 </td>
               </tr>
@@ -315,24 +315,9 @@ export default function SalesList({
 
                       {/* Category */}
                       <td className="py-3.5 px-3 whitespace-nowrap">
-                        {isEditing ? (
-                          <select
-                            value={editForm.category}
-                            onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                            className="border border-slate-300 rounded px-1.5 py-1 text-xs"
-                          >
-                            <option value="Retail">Retail</option>
-                            <option value="Services">Services</option>
-                            <option value="Wholesale">Wholesale</option>
-                            <option value="Food & Beverage">Food & Beverage</option>
-                            <option value="Online">Online</option>
-                            <option value="General">General</option>
-                          </select>
-                        ) : (
-                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
-                            {sale.category || 'General'}
-                          </span>
-                        )}
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
+                          {sale.category || 'General'}
+                        </span>
                       </td>
 
                       {/* Payment Breakdown Badges */}
@@ -378,38 +363,40 @@ export default function SalesList({
                         )}
                       </td>
 
-                      {/* Receipt Preview */}
+                      {/* Proof Image (Single image viewable by both general and admin) */}
                       <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                        {sale.receipt_url ? (
+                        {sale.proof_url || sale.receipt_url ? (
                           <button
-                            onClick={() => onOpenReceipt(sale.receipt_url, sale.description)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition text-[11px] font-medium"
-                            title="View receipt photo"
+                            onClick={() => onOpenReceipt(sale.proof_url || sale.receipt_url, sale.description)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80 transition text-xs font-semibold shadow-2xs group cursor-pointer"
+                            title="View single image proof"
                           >
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            <span>Photo</span>
+                            <ImageIcon className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                            <span>View Proof</span>
                           </button>
                         ) : (
-                          <span className="text-[11px] text-slate-400">None</span>
+                          <span className="text-[11px] text-slate-400 font-medium italic">No Proof</span>
                         )}
                       </td>
 
-                      {/* Immutable Upload Proof & Audit Trail */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <button
-                          onClick={() => onOpenAudit(sale)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-mono transition"
-                          title="Click to view immutable audit trail"
-                        >
-                          <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                          <span>{new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          {sale.updated_at && (
-                            <span className="px-1 bg-amber-100 text-amber-800 rounded text-[9px] font-sans font-semibold">
-                              Edited
-                            </span>
-                          )}
-                        </button>
-                      </td>
+                      {/* Audit Trail (Admin only) */}
+                      {!isReadOnly && (
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <button
+                            onClick={() => onOpenAudit(sale)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono transition cursor-pointer"
+                            title="Click to view immutable audit trail"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            {sale.updated_at && (
+                              <span className="px-1 bg-amber-100 text-amber-800 rounded text-[9px] font-sans font-semibold">
+                                Edited
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                      )}
 
                       {/* Actions */}
                       {!isReadOnly && (

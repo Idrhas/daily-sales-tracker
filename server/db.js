@@ -57,7 +57,8 @@ function createPureJsStore() {
         time: '09:45',
         created_at: new Date(d0.getTime() - 3600000 * 4).toISOString(),
         updated_at: null,
-        receipt_url: null,
+        receipt_url: '/uploads/receipt-1794431774547-898865143.jpeg',
+        proof_url: '/uploads/receipt-1794431774547-898865143.jpeg',
         created_by: 'admin',
         notes: 'Customer paid with card and cash',
         items: JSON.stringify([
@@ -218,6 +219,7 @@ const db = {
         time: params[5],
         created_at: params[6],
         receipt_url: params[7] || null,
+        proof_url: params[7] || null,
         created_by: params[8] || 'admin',
         notes: params[9] || null,
         items: params[10] || null,
@@ -246,6 +248,7 @@ const db = {
           time: params[5],
           updated_at: params[6],
           receipt_url: params[7],
+          proof_url: params[7],
           notes: params[8],
           items: params[9],
           cash_amount: Number(params[10] || 0),
@@ -349,7 +352,11 @@ const db = {
     }
 
     if (cleanSql.includes('FROM SALES')) {
-      let result = [...store.sales];
+      let result = store.sales.map(s => ({
+        ...s,
+        proof_url: s.receipt_url || s.proof_url || null,
+        receipt_url: s.receipt_url || s.proof_url || null
+      }));
 
       // Date filtering
       if (params.length >= 2 && cleanSql.includes('BETWEEN ? AND ?')) {

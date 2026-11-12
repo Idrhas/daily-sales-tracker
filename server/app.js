@@ -19,12 +19,33 @@ app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// Serve uploaded receipts statically
-const uploadsDir = path.join(__dirname, 'uploads');
+// Serve uploaded proofs and receipts statically
+const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const uploadsDir = isServerless ? path.join('/tmp', 'uploads') : path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) {}
 }
 app.use(['/api/uploads', '/uploads'], express.static(uploadsDir));
+if (uploadsDir !== path.join(__dirname, 'uploads')) {
+  app.use(['/api/uploads', '/uploads'], express.static(path.join(__dirname, 'uploads')));
+}
+
+// Explicit fallback handler for proof images
+app.get(['/api/uploads/:file', '/uploads/:file'], (req, res) => {
+  const fileName = path.basename(req.params.file);
+  const candidates = [
+    path.join(uploadsDir, fileName),
+    path.join(__dirname, 'uploads', fileName),
+    path.join(process.cwd(), 'server', 'uploads', fileName),
+    path.join(process.cwd(), 'uploads', fileName)
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return res.sendFile(c);
+    }
+  }
+  res.status(404).json({ error: 'Proof image not found' });
+});
 
 // API Routes (dual mount)
 app.use(['/api/auth', '/auth'], authRoutes);

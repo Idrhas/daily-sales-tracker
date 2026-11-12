@@ -26,7 +26,6 @@ import {
 const DEFAULT_ITEM = () => ({
   id: Date.now() + Math.random(),
   name: '',
-  category: 'Retail',
   qty: 1,
   price: ''
 });
@@ -172,8 +171,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           setItems([
             {
               id: Date.now(),
-              name: ocrDesc || 'Scanned Receipt Item',
-              category: 'Retail',
+              name: ocrDesc || 'Scanned Item',
               qty: 1,
               price: String(ocrAmt)
             }
@@ -183,14 +181,14 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
         }
 
         if (detected.length > 0) {
-          setOcrMessage(`Receipt OCR Extracted: ${detected.join(', ')}`);
+          setOcrMessage(`Proof OCR Extracted: ${detected.join(', ')}`);
         } else {
-          setOcrMessage('Receipt uploaded and attached.');
+          setOcrMessage('Proof image attached successfully.');
         }
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      setOcrMessage('Receipt attached. Please verify or enter item rows manually.');
+      setOcrMessage('Proof image attached. Please verify or enter item rows manually.');
     } finally {
       setOcrLoading(false);
     }
@@ -247,7 +245,8 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
         }
       }
 
-      const primaryCategory = validItems.length > 0 ? validItems[0].category : 'Retail';
+      // Default category to General as category selection is removed from entry form
+      const primaryCategory = 'General';
 
       // Default payment to full Cash if none entered
       let finalCash = parseFloat(cashAmount) || 0;
@@ -280,10 +279,11 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           date,
           time,
           receipt_url: finalReceiptUrl,
+          proof_url: finalReceiptUrl,
           notes: notes.trim(),
           items: validItems.map(it => ({
             name: it.name.trim() || 'Item',
-            category: it.category,
+            category: 'General',
             qty: parseFloat(it.qty) || 1,
             price: parseFloat(it.price) || 0,
             total: Number(((parseFloat(it.qty) || 1) * (parseFloat(it.price) || 0)).toFixed(2))
@@ -330,7 +330,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           </div>
           <div>
             <h2 className="text-sm font-bold text-slate-900">Record Sales Entry (Items & Payment Breakdown)</h2>
-            <p className="text-xs text-slate-500">Enter multiple items, attach receipts, and specify Cash, Card, or Transfer</p>
+            <p className="text-xs text-slate-500">Enter itemized sales, upload proof image, and specify Cash, Card, or Transfer</p>
           </div>
         </div>
 
@@ -389,32 +389,48 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           </div>
 
           <div className="md:col-span-3">
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+              <span>Proof Upload (Single Image)</span>
+              <span className="text-[10px] text-slate-400 font-normal">JPG, PNG, WEBP</span>
+            </label>
             {!receiptPreview ? (
-              <label className="cursor-pointer border border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/40 rounded-xl py-2 px-3 flex items-center justify-center gap-2 text-xs text-slate-600 transition h-[38px]">
+              <label className="cursor-pointer border border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/40 rounded-xl py-2 px-3 flex items-center justify-center gap-2 text-xs text-slate-600 transition h-[38px] group">
                 <input
                   type="file"
                   ref={fileInputRef}
                   accept="image/*"
+                  multiple={false}
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <Upload className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="truncate">Scan / Attach Receipt</span>
+                <Upload className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
+                <span className="truncate font-medium text-slate-700">Upload Proof Image</span>
               </label>
             ) : (
-              <div className="flex items-center gap-2 p-1.5 border border-slate-200 rounded-xl bg-slate-50 h-[38px]">
+              <div className="flex items-center gap-2 p-1.5 border border-emerald-300 bg-emerald-50/50 rounded-xl h-[38px]">
                 <img
                   src={receiptPreview}
-                  alt="Receipt Preview"
-                  className="w-7 h-7 object-cover rounded-lg border border-slate-200 shrink-0"
+                  alt="Proof Preview"
+                  className="w-7 h-7 object-cover rounded-lg border border-emerald-300 shrink-0 cursor-pointer hover:opacity-80 transition"
+                  onClick={() => window.open(receiptPreview, '_blank')}
+                  title="Click to view full image in new tab"
                 />
-                <span className="text-[11px] text-slate-700 truncate flex-1 font-medium">
-                  {receiptFile?.name || 'receipt.jpg'}
+                <span className="text-[11px] text-slate-800 truncate flex-1 font-medium">
+                  {receiptFile?.name || 'proof-image.jpg'}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => window.open(receiptPreview, '_blank')}
+                  className="text-emerald-700 hover:text-emerald-900 p-1 text-[11px] font-semibold"
+                  title="View full proof image"
+                >
+                  View
+                </button>
                 <button
                   type="button"
                   onClick={clearReceipt}
                   className="text-red-500 hover:text-red-700 p-1"
+                  title="Remove proof image"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -437,10 +453,9 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
               <tr className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                 <th className="py-2.5 px-3 w-8 text-center">#</th>
                 <th className="py-2.5 px-3">Item / Description</th>
-                <th className="py-2.5 px-3 w-36">Category</th>
-                <th className="py-2.5 px-3 w-20 text-center">Qty</th>
-                <th className="py-2.5 px-3 w-28 text-right">Unit Price</th>
-                <th className="py-2.5 px-3 w-28 text-right">Line Total</th>
+                <th className="py-2.5 px-3 w-24 text-center">Qty</th>
+                <th className="py-2.5 px-3 w-32 text-right">Unit Price</th>
+                <th className="py-2.5 px-3 w-32 text-right">Line Total</th>
                 <th className="py-2.5 px-2 w-10 text-center"></th>
               </tr>
             </thead>
@@ -462,21 +477,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                         placeholder="e.g. Wireless Mouse, Consultation, Coffee"
                         className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                       />
-                    </td>
-
-                    <td className="py-2 px-3">
-                      <select
-                        value={it.category}
-                        onChange={(e) => handleItemChange(idx, 'category', e.target.value)}
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:border-emerald-500"
-                      >
-                        <option value="Retail">Retail</option>
-                        <option value="Services">Services</option>
-                        <option value="Wholesale">Wholesale</option>
-                        <option value="Food & Beverage">Food & Beverage</option>
-                        <option value="Online">Online</option>
-                        <option value="General">General</option>
-                      </select>
                     </td>
 
                     <td className="py-2 px-3">
@@ -527,7 +527,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 border-t border-slate-200">
-                <td colSpan={4} className="py-2.5 px-3">
+                <td colSpan={3} className="py-2.5 px-3">
                   <button
                     type="button"
                     onClick={addItemRow}

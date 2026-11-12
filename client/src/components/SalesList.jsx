@@ -44,6 +44,12 @@ export default function SalesList({
   const [editForm, setEditForm] = useState({});
   const [expandedSaleIds, setExpandedSaleIds] = useState(new Set());
 
+  // Aggregate totals across sales for summary display
+  const totalAmount = sales.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  const totalCash = sales.reduce((sum, s) => sum + (Number(s.cash_amount) || 0), 0);
+  const totalCard = sales.reduce((sum, s) => sum + (Number(s.card_amount) || 0), 0);
+  const totalOther = sales.reduce((sum, s) => sum + (Number(s.other_amount) || 0), 0);
+
   const toggleExpand = (id) => {
     setExpandedSaleIds((prev) => {
       const next = new Set(prev);
@@ -497,8 +503,66 @@ export default function SalesList({
               })
             )}
           </tbody>
+
+          {/* Table Footer with Cash Total, Card Total, and Final Total */}
+          {sales.length > 0 && (
+            <tfoot className="border-t-2 border-slate-300 bg-slate-100/90 text-xs font-semibold text-slate-800">
+              <tr>
+                <td colSpan={4} className="py-3 px-4 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+                  Totals ({sales.length} records)
+                </td>
+                <td className="py-3 px-3 whitespace-nowrap">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300" title="Total Cash">
+                      <Banknote className="w-3 h-3 text-emerald-700" /> Cash: {currency}{totalCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-900 border border-blue-300" title="Total Card">
+                      <CreditCard className="w-3 h-3 text-blue-700" /> Card: {currency}{totalCard.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    {totalOther > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-purple-100 text-purple-900 border border-purple-300" title="Total Other">
+                        <Smartphone className="w-3 h-3 text-purple-700" /> Other: {currency}{totalOther.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="py-3 px-4 text-right whitespace-nowrap">
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Final Total</span>
+                    <span className="text-base font-extrabold text-emerald-700">
+                      {currency}{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </td>
+                <td colSpan={isReadOnly ? 1 : 3}></td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
+
+      {/* Bottom Summary Bar: Cash Total, Card Total, Final Total */}
+      {sales.length > 0 && (
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="text-slate-500 font-medium">
+            Showing <strong className="text-slate-800 font-bold">{sales.length}</strong> sales transactions
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 font-bold">
+              <Banknote className="w-4 h-4 text-emerald-600" />
+              <span>Cash Total: {currency}{totalCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 font-bold">
+              <CreditCard className="w-4 h-4 text-blue-600" />
+              <span>Card Total: {currency}{totalCard.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 text-white rounded-xl font-bold shadow-xs">
+              <span className="text-emerald-100 uppercase text-[10px] tracking-wider">Final Total:</span>
+              <span className="text-sm font-extrabold">{currency}{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

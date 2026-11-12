@@ -75,6 +75,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
   const oAmt = parseFloat(otherAmount) || 0;
   const totalPaid = cAmt + kAmt + oAmt;
   const difference = grandTotal - totalPaid;
+  const effectiveFinalTotal = grandTotal > 0 ? grandTotal : totalPaid;
 
   // Auto-sync cash amount if user hasn't typed a custom payment split
   const handleItemChange = (index, field, value) => {
@@ -206,8 +207,13 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
     e.preventDefault();
 
     const validItems = items.filter(it => it.name.trim() !== '' || (parseFloat(it.price) > 0));
-    if (validItems.length === 0 && grandTotal <= 0) {
-      setError('Please add at least one item with a name or price');
+    let finalCash = parseFloat(cashAmount) || 0;
+    let finalCard = parseFloat(cardAmount) || 0;
+    let finalOther = parseFloat(otherAmount) || 0;
+    const computedTotal = grandTotal > 0 ? grandTotal : (finalCash + finalCard + finalOther);
+
+    if (validItems.length === 0 && computedTotal <= 0) {
+      setError('Please add item details or enter a cash/card payment amount');
       return;
     }
 
@@ -249,12 +255,8 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
       const primaryCategory = 'General';
 
       // Default payment to full Cash if none entered
-      let finalCash = parseFloat(cashAmount) || 0;
-      let finalCard = parseFloat(cardAmount) || 0;
-      let finalOther = parseFloat(otherAmount) || 0;
-
       if (finalCash === 0 && finalCard === 0 && finalOther === 0) {
-        finalCash = grandTotal;
+        finalCash = computedTotal;
       }
 
       let paymentMethod = 'Cash';
@@ -272,7 +274,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          amount: parseFloat(grandTotal.toFixed(2)),
+          amount: parseFloat(computedTotal.toFixed(2)),
           currency,
           description: finalTitle,
           category: primaryCategory,
@@ -676,18 +678,36 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
             </div>
           </div>
 
-          {/* Payment Reconciliation Status Bar */}
-          <div className="flex flex-wrap items-center justify-between pt-1 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-500">Total Allocated Payment:</span>
-              <span className="font-bold text-slate-900">{currency}{totalPaid.toFixed(2)}</span>
+          {/* Payment Reconciliation & Final Total Status Bar */}
+          <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-200 text-xs gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-slate-600 font-semibold text-[11px] uppercase tracking-wider">Payment Breakdown:</span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100/90 text-emerald-900 font-bold border border-emerald-300">
+                <Banknote className="w-3.5 h-3.5 text-emerald-700" /> Cash: {currency}{cAmt.toFixed(2)}
+              </span>
+              <span className="text-slate-400 font-bold">+</span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-100/90 text-blue-900 font-bold border border-blue-300">
+                <CreditCard className="w-3.5 h-3.5 text-blue-700" /> Card: {currency}{kAmt.toFixed(2)}
+              </span>
+              {oAmt > 0 && (
+                <>
+                  <span className="text-slate-400 font-bold">+</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-100/80 text-purple-900 font-bold border border-purple-300">
+                    <Smartphone className="w-3.5 h-3.5 text-purple-700" /> Other: {currency}{oAmt.toFixed(2)}
+                  </span>
+                </>
+              )}
+              <span className="text-slate-400 font-bold">=</span>
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-700 text-white font-extrabold shadow-2xs text-xs">
+                Final Total: {currency}{effectiveFinalTotal.toFixed(2)}
+              </span>
             </div>
 
             {grandTotal > 0 && (
               <div>
                 {Math.abs(difference) < 0.01 ? (
                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-full">
-                    <Check className="w-3.5 h-3.5" /> Exactly Balanced with Total
+                    <Check className="w-3.5 h-3.5" /> Balanced with Items Total
                   </span>
                 ) : difference > 0 ? (
                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-100/80 px-2.5 py-0.5 rounded-full">
@@ -724,7 +744,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
               </>
             ) : (
               <>
-                <CheckCircle className="w-4 h-4" /> Save Sales Entry ({currency}{grandTotal.toFixed(2)})
+                <CheckCircle className="w-4 h-4" /> Save Sales Entry (Final Total: {currency}{effectiveFinalTotal.toFixed(2)})
               </>
             )}
           </button>

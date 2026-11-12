@@ -17,11 +17,11 @@ export default function AnalyticsCards({ stats, sales = [], currency = '$' }) {
     <div className="space-y-4 mb-6">
       {/* Top 4 Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Revenue */}
+        {/* Final Total / Revenue */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow transition">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Total Revenue
+              Final Total (Revenue)
             </span>
             <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <DollarSign className="w-5 h-5" />
@@ -33,8 +33,8 @@ export default function AnalyticsCards({ stats, sales = [], currency = '$' }) {
             </span>
           </div>
           <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+            <span className="font-medium text-slate-700">Cash: {currency}{totalCash.toFixed(0)} • Card: {currency}{totalCard.toFixed(0)}</span>
             <span>{count} transaction{count === 1 ? '' : 's'}</span>
-            <span>Avg: {currency}{avg.toFixed(0)}</span>
           </div>
         </div>
 
@@ -99,6 +99,37 @@ export default function AnalyticsCards({ stats, sales = [], currency = '$' }) {
             <span>Banks, Mobile, Apps</span>
             <span className="font-semibold text-purple-700">{otherPct}% of total</span>
           </div>
+        </div>
+      </div>
+
+      {/* Cash & Card to Final Total Summary Banner */}
+      <div className="bg-slate-900 text-white rounded-2xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] mr-1">Payment Totals:</span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 font-bold">
+            <Banknote className="w-3.5 h-3.5 text-emerald-400" />
+            Cash Total: {currency}{totalCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          <span className="text-slate-400 font-bold">+</span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-950/80 border border-blue-500/30 text-blue-300 font-bold">
+            <CreditCard className="w-3.5 h-3.5 text-blue-400" />
+            Card Total: {currency}{totalCard.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          {totalOther > 0 && (
+            <>
+              <span className="text-slate-400 font-bold">+</span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-950/80 border border-purple-500/30 text-purple-300 font-bold">
+                <Smartphone className="w-3.5 h-3.5 text-purple-400" />
+                Other: {currency}{totalOther.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2 font-bold ml-auto sm:ml-0">
+          <span className="text-slate-300 uppercase tracking-wider text-[11px]">Final Total Displayed:</span>
+          <span className="text-base text-emerald-400 font-extrabold tracking-tight bg-emerald-950/90 px-3 py-1 rounded-xl border border-emerald-400/40">
+            {currency}{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
         </div>
       </div>
     </div>

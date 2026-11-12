@@ -23,6 +23,22 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+export function formatFullSpelledDate(dateStr) {
+  if (!dateStr) return '';
+  const parts = String(dateStr).split('-');
+  if (parts.length !== 3) return dateStr;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const d = new Date(year, month, day);
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
 const DEFAULT_ITEM = () => ({
   id: Date.now() + Math.random(),
   name: '',
@@ -221,15 +237,19 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
         }
       }
 
+      const spelledDate = formatFullSpelledDate(date);
       let finalTitle = transactionTitle.trim();
       if (!finalTitle) {
-        if (validItems.length > 0) {
-          finalTitle = validItems[0].name || 'Sales Transaction';
-          if (validItems.length > 1) {
-            finalTitle += ` (+${validItems.length - 1} more items)`;
-          }
+        if (validItems.length > 0 && validItems[0].name.trim()) {
+          const itemSummary = validItems[0].name.trim() + (validItems.length > 1 ? ` (+${validItems.length - 1} more items)` : '');
+          finalTitle = `${itemSummary} - ${spelledDate}`;
         } else {
-          finalTitle = 'Sales Transaction';
+          finalTitle = `Daily Sales - ${spelledDate}`;
+        }
+      } else {
+        const monthWord = spelledDate.split(' ')[1] || '';
+        if (!finalTitle.includes(spelledDate) && !finalTitle.includes(monthWord)) {
+          finalTitle = `${finalTitle} - ${spelledDate}`;
         }
       }
 
@@ -339,7 +359,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                 type="text"
                 value={transactionTitle}
                 onChange={(e) => setTransactionTitle(e.target.value)}
-                placeholder="e.g. Daily Counter Sales, Customer Invoice #104"
+                placeholder={`Optional (defaults to: Daily Sales - ${formatFullSpelledDate(date)})`}
                 className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
               />
             </div>

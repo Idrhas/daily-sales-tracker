@@ -3,6 +3,23 @@ const router = express.Router();
 const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
+// Helper to spell out full date
+function formatFullSpelledDate(dateStr) {
+  if (!dateStr) return '';
+  const parts = String(dateStr).split('-');
+  if (parts.length !== 3) return dateStr;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const d = new Date(year, month, day);
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
 // Helper to compute date boundaries
 function getDateBoundaries(filter, customStart, customEnd) {
   const now = new Date();
@@ -15,8 +32,9 @@ function getDateBoundaries(filter, customStart, customEnd) {
   } else if (filter === 'week') {
     // Current week (Monday to Sunday)
     const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-    const monday = new Date(now.setDate(diff));
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(now);
+    monday.setDate(diff);
     startDate = monday.toISOString().split('T')[0];
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
@@ -219,10 +237,21 @@ router.post('/', requireAuth, async (req, res) => {
       finalAmount = items.reduce((sum, it) => sum + (Number(it.total) || (Number(it.qty || 1) * Number(it.price || 0))), 0);
     }
 
-    if (!finalDesc && Array.isArray(items) && items.length > 0) {
-      finalDesc = items[0].name || items[0].description || 'Sales Order';
-      if (items.length > 1) {
-        finalDesc += ` (+${items.length - 1} more items)`;
+    const now = new Date();
+    const finalDate = date || now.toISOString().split('T')[0];
+    const finalTime = time || now.toTimeString().split(' ')[0].substring(0, 5);
+    const spelledDate = formatFullSpelledDate(finalDate);
+
+    if (!finalDesc || finalDesc === 'Sales Order' || finalDesc === 'Sales Transaction') {
+      if (Array.isArray(items) && items.length > 0 && items[0].name) {
+        finalDesc = `${items[0].name.trim()}${items.length > 1 ? ` (+${items.length - 1} more items)` : ''} - ${spelledDate}`;
+      } else {
+        finalDesc = `Daily Sales - ${spelledDate}`;
+      }
+    } else {
+      const monthWord = spelledDate.split(' ')[1] || '';
+      if (!finalDesc.includes(spelledDate) && !finalDesc.includes(monthWord)) {
+        finalDesc = `${finalDesc.trim()} - ${spelledDate}`;
       }
     }
 
@@ -242,9 +271,6 @@ router.post('/', requireAuth, async (req, res) => {
       else pMethod = 'Cash';
     }
 
-    const now = new Date();
-    const finalDate = date || now.toISOString().split('T')[0];
-    const finalTime = time || now.toTimeString().split(' ')[0].substring(0, 5);
     // Server enforced immutable timestamp
     const createdAt = now.toISOString();
 

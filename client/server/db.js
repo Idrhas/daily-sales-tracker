@@ -29,14 +29,17 @@ let dbPath = defaultDbPath;
 const jsonStorePath = isServerless ? path.join('/tmp', 'sales_store.json') : path.join(__dirname, 'sales_store.json');
 
 function createPureJsStore() {
-  // Pre-computed hash for 'sales2024'
   const hash = getAdminHash();
   const now = new Date();
-  const formatD = (d) => d.toISOString().split('T')[0];
-
-  const d0 = new Date(now);
-  const d1 = new Date(now); d1.setDate(now.getDate() - 1);
-  const d2 = new Date(now); d2.setDate(now.getDate() - 2);
+  try {
+    const seedPath = path.join(__dirname, 'sales_store.json');
+    if (fs.existsSync(seedPath)) {
+      const parsed = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+      if (parsed && Array.isArray(parsed.sales)) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
 
   return {
     users: [
@@ -46,89 +49,8 @@ function createPureJsStore() {
       share_token: 'public-view-34wran9r',
       backup_interval: 'daily'
     },
-    sales: [
-      {
-        id: 1,
-        amount: 245.50,
-        currency: '$',
-        description: 'Morning Retail Electronics & Accessories',
-        category: 'Retail',
-        date: formatD(d0),
-        time: '09:45',
-        created_at: new Date(d0.getTime() - 3600000 * 4).toISOString(),
-        updated_at: null,
-        receipt_url: '/uploads/receipt-1794431774547-898865143.jpeg',
-        proof_url: '/uploads/receipt-1794431774547-898865143.jpeg',
-        created_by: 'admin',
-        notes: 'Customer paid with card and cash',
-        items: JSON.stringify([
-          { name: 'Wireless Ergonomic Keyboard', category: 'Retail', qty: 2, price: 45.00, total: 90.00 },
-          { name: 'USB-C Fast Charging Hub', category: 'Retail', qty: 3, price: 24.50, total: 73.50 },
-          { name: 'Desk Mat & Mouse Pad Set', category: 'Retail', qty: 1, price: 18.00, total: 18.00 }
-        ]),
-        cash_amount: 100.00,
-        card_amount: 145.50,
-        other_amount: 0,
-        other_payment_name: null,
-        payment_method: 'Split'
-      },
-      {
-        id: 2,
-        amount: 89.00,
-        currency: '$',
-        description: 'Catering & Beverages - Luncheon order',
-        category: 'Food & Beverage',
-        date: formatD(d0),
-        time: '13:15',
-        created_at: new Date(d0.getTime() - 3600000 * 2).toISOString(),
-        updated_at: null,
-        receipt_url: null,
-        created_by: 'admin',
-        notes: 'Direct takeaway',
-        items: JSON.stringify([
-          { name: 'Lunch Sandwich Platters', category: 'Food & Beverage', qty: 4, price: 15.00, total: 60.00 },
-          { name: 'Fresh Juice Pitchers', category: 'Food & Beverage', qty: 2, price: 14.50, total: 29.00 }
-        ]),
-        cash_amount: 89.00,
-        card_amount: 0,
-        other_amount: 0,
-        other_payment_name: null,
-        payment_method: 'Cash'
-      },
-      {
-        id: 3,
-        amount: 520.00,
-        currency: '$',
-        description: 'Weekly Wholesale Packaging Supplies',
-        category: 'Wholesale',
-        date: formatD(d1),
-        time: '11:20',
-        created_at: new Date(d1.getTime() + 3600000 * 3).toISOString(),
-        updated_at: null,
-        receipt_url: null,
-        created_by: 'admin',
-        notes: 'Invoice #1044',
-        items: JSON.stringify([
-          { name: 'Cardboard Shipping Boxes (Bundle of 100)', category: 'Wholesale', qty: 5, price: 80.00, total: 400.00 },
-          { name: 'Heavy Duty Packing Tape Rolls', category: 'Wholesale', qty: 10, price: 12.00, total: 120.00 }
-        ]),
-        cash_amount: 0,
-        card_amount: 520.00,
-        other_amount: 0,
-        other_payment_name: null,
-        payment_method: 'Card'
-      }
-    ],
-    audit_logs: [
-      {
-        id: 1,
-        sale_id: 1,
-        action: 'CREATE',
-        changed_by: 'admin',
-        changed_at: new Date(d0.getTime() - 3600000 * 4).toISOString(),
-        details: JSON.stringify({ amount: 245.50, description: 'Morning Retail Electronics & Accessories' })
-      }
-    ]
+    sales: [],
+    audit_logs: []
   };
 }
 
@@ -140,7 +62,16 @@ function loadStore() {
     if (fs.existsSync(jsonStorePath)) {
       const data = fs.readFileSync(jsonStorePath, 'utf8');
       memoryStore = JSON.parse(data);
-      // Ensure admin password hash is updated to 'sales2024'
+    } else {
+      const repoSeed = path.join(__dirname, 'sales_store.json');
+      if (fs.existsSync(repoSeed)) {
+        const data = fs.readFileSync(repoSeed, 'utf8');
+        memoryStore = JSON.parse(data);
+        saveStore();
+      }
+    }
+
+    if (memoryStore) {
       const admin = memoryStore.users && memoryStore.users.find(u => u.username === 'admin');
       if (admin) {
         admin.password_hash = getAdminHash();
@@ -148,6 +79,7 @@ function loadStore() {
       return memoryStore;
     }
   } catch (e) {}
+
   memoryStore = createPureJsStore();
   saveStore();
   return memoryStore;

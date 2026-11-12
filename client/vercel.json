@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "framework": null,
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index?__path=$1" },

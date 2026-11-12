@@ -7,29 +7,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        pw: {
-          orange: '#F26B21',
-          'orange-dark': '#D95F2B',
-          'orange-light': '#FFF2EA',
-          black: '#171717',
-          dark: '#111111',
-          cream: '#F5EBDD',
-          'cream-light': '#FAF5EE',
-          'cream-dark': '#EADBC8',
-          teal: '#3a8a76',
-          'teal-light': '#EBF5F2',
-          'teal-dark': '#286354',
-          brown: '#3d2308',
-          'brown-light': '#664219',
-          purple: '#451a75',
-          'purple-light': '#F4EEFC'
+        brand: {
+          50: '#f0fdf4',
+          100: '#dcfce7',
+          200: '#bbf7d0',
+          300: '#86efac',
+          400: '#4ade80',
+          500: '#22c55e',
+          600: '#16a34a',
+          700: '#15803d',
+          800: '#166534',
+          900: '#14532d',
         }
-      },
-      fontFamily: {
-        serif: ['"EB Garamond"', 'Georgia', 'serif'],
-        sans: ['"Open Sans"', 'system-ui', '-apple-system', 'sans-serif'],
       }
     },
   },
   plugins: [],
 }
+

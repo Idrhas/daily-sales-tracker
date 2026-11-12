@@ -49,12 +49,11 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
   const [otherAmount, setOtherAmount] = useState('');
   const [otherName, setOtherName] = useState('Bank Transfer');
 
-  // Receipt & OCR
+  // Receipt & Proof Image (saved directly without OCR parsing)
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState(null);
   const [uploadedReceiptUrl, setUploadedReceiptUrl] = useState(null);
-  const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrMessage, setOcrMessage] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -141,18 +140,12 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
     setReceiptPreview(URL.createObjectURL(file));
     setError(null);
 
-    await triggerOcr(file);
-  };
-
-  const triggerOcr = async (file) => {
-    setOcrLoading(true);
-    setOcrMessage('Scanning receipt image with OCR...');
-    setError(null);
-
+    // Save image directly as proof without reading or scanning content
     try {
+      setUploadingImage(true);
       const formData = new FormData();
       formData.append('receipt', file);
-      formData.append('scan', 'true');
+      formData.append('scan', 'false');
 
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -161,46 +154,13 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to process receipt');
-
-      setUploadedReceiptUrl(data.fileUrl);
-
-      if (data.ocr && data.ocr.extracted) {
-        const { amount: ocrAmt, date: ocrDate, description: ocrDesc } = data.ocr.extracted;
-        let detected = [];
-
-        if (ocrDate) {
-          setDate(ocrDate);
-          detected.push(`Date: ${ocrDate}`);
-        }
-        if (ocrDesc) {
-          setTransactionTitle(ocrDesc);
-          detected.push(`Merchant: "${ocrDesc}"`);
-        }
-        if (ocrAmt) {
-          setItems([
-            {
-              id: Date.now(),
-              name: ocrDesc || 'Scanned Item',
-              qty: 1,
-              price: String(ocrAmt)
-            }
-          ]);
-          setCashAmount(String(ocrAmt));
-          detected.push(`Total: ${currency}${ocrAmt}`);
-        }
-
-        if (detected.length > 0) {
-          setOcrMessage(`Proof OCR Extracted: ${detected.join(', ')}`);
-        } else {
-          setOcrMessage('Proof image attached successfully.');
-        }
+      if (res.ok && data.fileUrl) {
+        setUploadedReceiptUrl(data.fileUrl);
       }
     } catch (err) {
-      console.error('OCR Error:', err);
-      setOcrMessage('Proof image attached. Please verify or enter item rows manually.');
+      console.error('Image upload error:', err);
     } finally {
-      setOcrLoading(false);
+      setUploadingImage(false);
     }
   };
 
@@ -208,7 +168,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
     setReceiptFile(null);
     setReceiptPreview(null);
     setUploadedReceiptUrl(null);
-    setOcrMessage(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -436,8 +395,11 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
                   title="Click to view full image in new tab"
                 />
                 <span className="text-[11px] text-slate-800 truncate flex-1 font-medium">
-                  {receiptFile?.name || 'proof-image.jpg'}
+                  {uploadingImage ? 'Saving image proof...' : (receiptFile?.name || 'proof-image.jpg')}
                 </span>
+                {uploadingImage && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600 shrink-0" />
+                )}
                 <button
                   type="button"
                   onClick={() => window.open(receiptPreview, '_blank')}
@@ -458,13 +420,6 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
             )}
           </div>
         </div>
-
-        {ocrMessage && (
-          <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="flex-1">{ocrMessage}</span>
-          </div>
-        )}
 
         {/* The Items Table */}
         <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
@@ -756,7 +711,7 @@ export default function SalesEntryForm({ onSaleAdded, token, currency = '$' }) {
 
           <button
             type="submit"
-            disabled={submitting || ocrLoading}
+            disabled={submitting || uploadingImage}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-md shadow-emerald-600/20 transition disabled:opacity-50"
           >
             {submitting ? (

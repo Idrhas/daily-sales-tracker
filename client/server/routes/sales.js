@@ -183,16 +183,16 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/sales - Record a new sale
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { 
-      amount, 
-      currency = '$', 
-      description, 
-      category = 'General', 
-      date, 
-      time, 
-      receipt_url, 
+    const {
+      amount,
+      currency = '$',
+      description,
+      category = 'General',
+      date,
+      time,
+      receipt_url,
       proof_url,
-      notes, 
+      notes,
       items,
       cash_amount,
       card_amount,
@@ -293,16 +293,16 @@ router.post('/', requireAuth, async (req, res) => {
 router.put('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      amount, 
-      currency, 
-      description, 
-      category, 
-      date, 
-      time, 
-      receipt_url, 
+    const {
+      amount,
+      currency,
+      description,
+      category,
+      date,
+      time,
+      receipt_url,
       proof_url,
-      notes, 
+      notes,
       items,
       cash_amount,
       card_amount,
@@ -346,7 +346,7 @@ router.put('/:id', requireAuth, async (req, res) => {
            cash_amount = ?, card_amount = ?, other_amount = ?, other_payment_name = ?, payment_method = ?
        WHERE id = ?`,
       [updatedAmount, updatedCurrency, updatedDesc, updatedCategory, updatedDate, updatedTime, updatedAt, updatedReceipt, updatedNotes, itemsJson,
-       updatedCash, updatedCard, updatedOther, updatedOtherName, updatedMethod, id]
+        updatedCash, updatedCard, updatedOther, updatedOtherName, updatedMethod, id]
     );
 
     const changes = {

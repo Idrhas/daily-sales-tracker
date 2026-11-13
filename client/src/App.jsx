@@ -9,22 +9,6 @@ import BackupModal from './components/BackupModal';
 import ShareModal from './components/ShareModal';
 import AdminLoginCard from './components/AdminLoginCard';
 
-const CACHE_KEY = 'daily_sales_cached_list';
-
-function loadCachedSales() {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return [];
-}
-
-function saveCachedSales(list) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(list));
-  } catch (e) {}
-}
-
 export default function App() {
   const checkIsAdmin = () => {
     const path = (window.location.pathname || '').toLowerCase();
@@ -41,7 +25,7 @@ export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem('sales_tracker_token'));
 
   // Sales Data & Filters
-  const [sales, setSales] = useState(() => loadCachedSales());
+  const [sales, setSales] = useState([]);
   const [stats, setStats] = useState({ totalAmount: 0, totalCash: 0, totalCard: 0, totalOther: 0, count: 0, averageAmount: 0 });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -139,84 +123,10 @@ export default function App() {
       }
 
       const data = await res.json();
-      const serverSales = Array.isArray(data.sales) ? data.sales : [];
-
-      // Resilient local caching & merging:
-      const localCached = loadCachedSales();
-      const mergedMap = new Map();
-
-      // First add server sales
-      serverSales.forEach((s) => {
-        if (s && s.id != null) mergedMap.set(s.id, s);
-      });
-
-      // Keep any locally created sales that might not have landed on server or during cold restart
-      localCached.forEach((s) => {
-        if (s && s.id != null && !mergedMap.has(s.id)) {
-          mergedMap.set(s.id, s);
-        }
-      });
-
-      const mergedList = Array.from(mergedMap.values());
-      saveCachedSales(mergedList);
-
-      // Re-sort according to sortBy / sortOrder
-      mergedList.sort((a, b) => {
-        if (sortBy === 'amount') {
-          return sortOrder === 'ASC' ? (Number(a.amount) - Number(b.amount)) : (Number(b.amount) - Number(a.amount));
-        } else if (sortBy === 'description') {
-          return sortOrder === 'ASC' ? (a.description || '').localeCompare(b.description || '') : (b.description || '').localeCompare(a.description || '');
-        } else {
-          const dateDiff = (b.date || '').localeCompare(a.date || '');
-          if (dateDiff !== 0) return sortOrder === 'ASC' ? -dateDiff : dateDiff;
-          return sortOrder === 'ASC' ? (a.time || '').localeCompare(b.time || '') : (b.time || '').localeCompare(a.time || '');
-        }
-      });
-
-      // Apply search / custom filters locally if present
-      let displaySales = mergedList;
-      if (search.trim()) {
-        const q = search.trim().toLowerCase();
-        displaySales = displaySales.filter((s) =>
-          (s.description || '').toLowerCase().includes(q) ||
-          (s.category || '').toLowerCase().includes(q) ||
-          (s.notes || '').toLowerCase().includes(q)
-        );
-      }
-      if (filter === 'custom' && customStart && customEnd) {
-        displaySales = displaySales.filter((s) => s.date >= customStart && s.date <= customEnd);
-      }
-
-      setSales(displaySales);
-
-      // Recalculate stats based on actual sales list
-      let totalAmount = 0;
-      let totalCash = 0;
-      let totalCard = 0;
-      let totalOther = 0;
-      for (const item of displaySales) {
-        totalAmount += Number(item.amount) || 0;
-        totalCash += Number(item.cash_amount) || 0;
-        totalCard += Number(item.card_amount) || 0;
-        totalOther += Number(item.other_amount) || 0;
-      }
-      const count = displaySales.length;
-      const averageAmount = count > 0 ? totalAmount / count : 0;
-
-      setStats({
-        totalAmount: Number(totalAmount.toFixed(2)),
-        totalCash: Number(totalCash.toFixed(2)),
-        totalCard: Number(totalCard.toFixed(2)),
-        totalOther: Number(totalOther.toFixed(2)),
-        count,
-        averageAmount: Number(averageAmount.toFixed(2))
-      });
+      setSales(data.sales || []);
+      setStats(data.stats || { totalAmount: 0, totalCash: 0, totalCard: 0, totalOther: 0, count: 0, averageAmount: 0 });
     } catch (err) {
       console.error('Fetch sales error:', err);
-      const localCached = loadCachedSales();
-      if (localCached.length > 0) {
-        setSales(localCached);
-      }
     } finally {
       setLoading(false);
     }
@@ -226,14 +136,7 @@ export default function App() {
     fetchSales();
   }, [fetchSales]);
 
-  const handleSaleAdded = (newSale) => {
-    if (newSale && newSale.id != null) {
-      const cached = loadCachedSales();
-      const exists = cached.some((s) => s.id === newSale.id);
-      if (!exists) {
-        saveCachedSales([newSale, ...cached]);
-      }
-    }
+  const handleSaleAdded = () => {
     fetchSales();
   };
 
@@ -272,10 +175,11 @@ export default function App() {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
-      // Remove from cached sales
-      const cached = loadCachedSales();
-      saveCachedSales(cached.filter((s) => s.id !== id));
-      fetchSales();
+      if (res.ok) {
+        fetchSales();
+      } else {
+        alert('Failed to delete sale');
+      }
     } catch (err) {
       alert('Network error deleting sale: ' + err.message);
     }

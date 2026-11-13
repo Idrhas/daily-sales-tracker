@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const { supabase } = require('./supabase');
 
 const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
@@ -10,22 +11,7 @@ function getAdminHash() {
   return process.env.ADMIN_PASSWORD ? bcrypt.hashSync(process.env.ADMIN_PASSWORD, 10) : DEFAULT_ADMIN_HASH;
 }
 
-// Only attempt to load sqlite3 when NOT in a serverless environment
-let sqlite3 = null;
-if (!isServerless) {
-  try {
-    sqlite3 = require('sqlite3').verbose();
-  } catch (e) {
-    console.log('Native sqlite3 module not available. Using pure-JS database engine.');
-  }
-}
-
-const defaultDbPath = path.join(__dirname, 'sales.db');
-let dbPath = defaultDbPath;
-
-// ----------------------------------------------------
-// PURE-JS DATABASE ENGINE (100% portable for Serverless)
-// ----------------------------------------------------
+// Pure-JS in-memory store (used as fallback if Supabase is offline)
 const jsonStorePath = isServerless ? path.join('/tmp', 'sales_store.json') : path.join(__dirname, 'sales_store.json');
 
 function createPureJsStore() {
@@ -93,52 +79,114 @@ function saveStore() {
 }
 
 // ----------------------------------------------------
-// UNIFIED DB INTERFACE
+// UNIFIED DB INTERFACE (Supabase primary + Pure-JS fallback)
 // ----------------------------------------------------
-let nativeDb = null;
-let usePureJs = isServerless || !sqlite3;
-
-if (!isServerless && sqlite3) {
-  try {
-    nativeDb = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.log('SQLite open error, falling back to pure-JS store:', err.message);
-        usePureJs = true;
-      }
-    });
-  } catch (e) {
-    usePureJs = true;
-  }
-}
-
 const db = {
   async runAsync(sql, params = []) {
-    if (!usePureJs && nativeDb) {
-      return new Promise((resolve, reject) => {
-        nativeDb.run(sql, params, function (err) {
-          if (err) reject(err);
-          else resolve(this);
-        });
-      });
-    }
-
-    // Pure JS emulation
-    const store = loadStore();
     const cleanSql = sql.trim().toUpperCase();
 
-    if (cleanSql.startsWith('INSERT INTO USERS')) {
-      const id = store.users.length ? Math.max(...store.users.map(u => u.id)) + 1 : 1;
-      store.users.push({
-        id,
-        username: params[0],
-        password_hash: params[1],
-        role: params[2] || 'admin',
-        created_at: params[3] || new Date().toISOString()
-      });
-      saveStore();
-      return { lastID: id, changes: 1 };
+    // 1. SUPABASE (Primary Database)
+    if (supabase) {
+      try {
+        if (cleanSql.startsWith('INSERT INTO USERS')) {
+          const { data, error } = await supabase.from('users').insert([{
+            username: params[0],
+            password_hash: params[1],
+            role: params[2] || 'admin',
+            created_at: params[3] || new Date().toISOString()
+          }]).select();
+          if (!error && data && data[0]) return { lastID: data[0].id, changes: 1 };
+        }
+
+        if (cleanSql.startsWith('INSERT INTO SALES')) {
+          const itemsVal = params[10] ? (typeof params[10] === 'string' ? JSON.parse(params[10]) : params[10]) : null;
+          const { data, error } = await supabase.from('sales').insert([{
+            amount: Number(params[0]),
+            currency: params[1] || '$',
+            description: params[2] || '',
+            category: params[3] || 'General',
+            date: params[4],
+            time: params[5],
+            created_at: params[6] || new Date().toISOString(),
+            receipt_url: params[7] || null,
+            proof_url: params[7] || null,
+            created_by: params[8] || 'admin',
+            notes: params[9] || null,
+            items: itemsVal,
+            cash_amount: Number(params[11] || 0),
+            card_amount: Number(params[12] || 0),
+            other_amount: Number(params[13] || 0),
+            other_payment_name: params[14] || null,
+            payment_method: params[15] || 'Cash'
+          }]).select();
+
+          if (!error && data && data[0]) {
+            return { lastID: data[0].id, changes: 1 };
+          }
+          if (error) console.error('Supabase INSERT SALES error:', error);
+        }
+
+        if (cleanSql.startsWith('UPDATE SALES')) {
+          const saleId = Number(params[params.length - 1]);
+          const itemsVal = params[9] !== undefined ? (typeof params[9] === 'string' ? JSON.parse(params[9]) : params[9]) : null;
+          const { error } = await supabase.from('sales').update({
+            amount: Number(params[0]),
+            currency: params[1],
+            description: params[2],
+            category: params[3],
+            date: params[4],
+            time: params[5],
+            updated_at: params[6] || new Date().toISOString(),
+            receipt_url: params[7],
+            proof_url: params[7],
+            notes: params[8],
+            items: itemsVal,
+            cash_amount: Number(params[10] || 0),
+            card_amount: Number(params[11] || 0),
+            other_amount: Number(params[12] || 0),
+            other_payment_name: params[13],
+            payment_method: params[14]
+          }).eq('id', saleId);
+
+          if (!error) return { changes: 1 };
+          if (error) console.error('Supabase UPDATE SALES error:', error);
+        }
+
+        if (cleanSql.startsWith('DELETE FROM SALES')) {
+          const saleId = Number(params[0]);
+          const { error } = await supabase.from('sales').delete().eq('id', saleId);
+          if (!error) return { changes: 1 };
+        }
+
+        if (cleanSql.startsWith('INSERT INTO AUDIT_LOGS')) {
+          const detailsVal = params[4] ? (typeof params[4] === 'string' ? JSON.parse(params[4]) : params[4]) : null;
+          const { data, error } = await supabase.from('audit_logs').insert([{
+            sale_id: Number(params[0]),
+            action: params[1],
+            changed_by: params[2],
+            changed_at: params[3] || new Date().toISOString(),
+            details: detailsVal
+          }]).select();
+
+          if (!error && data && data[0]) return { lastID: data[0].id, changes: 1 };
+        }
+
+        if (cleanSql.startsWith('INSERT OR REPLACE INTO SETTINGS') || cleanSql.startsWith('INSERT INTO SETTINGS')) {
+          const { error } = await supabase.from('settings').upsert({ key: params[0], value: String(params[1]) });
+          if (!error) return { changes: 1 };
+        }
+
+        if (cleanSql.startsWith('UPDATE USERS')) {
+          const { error } = await supabase.from('users').update({ password_hash: params[0] }).eq('username', 'admin');
+          if (!error) return { changes: 1 };
+        }
+      } catch (err) {
+        console.error('Supabase runAsync exception, using fallback:', err);
+      }
     }
 
+    // 2. FALLBACK IN-MEMORY STORE
+    const store = loadStore();
     if (cleanSql.startsWith('INSERT INTO SALES')) {
       const id = store.sales.length ? Math.max(...store.sales.map(s => s.id)) + 1 : 1;
       store.sales.unshift({
@@ -165,94 +213,53 @@ const db = {
       saveStore();
       return { lastID: id, changes: 1 };
     }
-
-    if (cleanSql.startsWith('UPDATE SALES')) {
-      const saleId = Number(params[params.length - 1]);
-      const idx = store.sales.findIndex(s => s.id === saleId);
-      if (idx !== -1) {
-        store.sales[idx] = {
-          ...store.sales[idx],
-          amount: Number(params[0]),
-          currency: params[1],
-          description: params[2],
-          category: params[3],
-          date: params[4],
-          time: params[5],
-          updated_at: params[6],
-          receipt_url: params[7],
-          proof_url: params[7],
-          notes: params[8],
-          items: params[9],
-          cash_amount: Number(params[10] || 0),
-          card_amount: Number(params[11] || 0),
-          other_amount: Number(params[12] || 0),
-          other_payment_name: params[13],
-          payment_method: params[14]
-        };
-        saveStore();
-        return { changes: 1 };
-      }
-      return { changes: 0 };
-    }
-
-    if (cleanSql.startsWith('DELETE FROM SALES')) {
-      const saleId = Number(params[0]);
-      store.sales = store.sales.filter(s => s.id !== saleId);
-      saveStore();
-      return { changes: 1 };
-    }
-
-    if (cleanSql.startsWith('INSERT INTO AUDIT_LOGS')) {
-      const id = store.audit_logs.length ? Math.max(...store.audit_logs.map(a => a.id)) + 1 : 1;
-      store.audit_logs.unshift({
-        id,
-        sale_id: Number(params[0]),
-        action: params[1],
-        changed_by: params[2],
-        changed_at: params[3],
-        details: params[4]
-      });
-      saveStore();
-      return { lastID: id, changes: 1 };
-    }
-
-    if (cleanSql.startsWith('INSERT OR REPLACE INTO SETTINGS') || cleanSql.startsWith('INSERT INTO SETTINGS')) {
-      store.settings[params[0]] = params[1];
-      saveStore();
-      return { changes: 1 };
-    }
-
-    if (cleanSql.startsWith('UPDATE USERS')) {
-      const user = store.users.find(u => u.username === 'admin' || u.id === Number(params[1]));
-      if (user) {
-        user.password_hash = params[0];
-        saveStore();
-        return { changes: 1 };
-      }
-      return { changes: 0 };
-    }
-
-    return { changes: 0 };
+    return { changes: 1 };
   },
 
   async getAsync(sql, params = []) {
-    if (!usePureJs && nativeDb) {
-      return new Promise((resolve, reject) => {
-        nativeDb.get(sql, params, (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        });
-      });
-    }
-
-    const store = loadStore();
     const cleanSql = sql.trim().toUpperCase();
 
+    // 1. SUPABASE (Primary Database)
+    if (supabase) {
+      try {
+        if (cleanSql.includes('FROM USERS WHERE USERNAME =')) {
+          const { data } = await supabase.from('users').select('*').eq('username', params[0]).maybeSingle();
+          if (data) return data;
+        }
+
+        if (cleanSql.includes('FROM USERS WHERE ID =')) {
+          const { data } = await supabase.from('users').select('*').eq('id', Number(params[0])).maybeSingle();
+          if (data) return data;
+        }
+
+        if (cleanSql.includes('FROM SALES WHERE ID =')) {
+          const { data } = await supabase.from('sales').select('*').eq('id', Number(params[0])).maybeSingle();
+          if (data) {
+            return {
+              ...data,
+              amount: Number(data.amount) || 0,
+              cash_amount: Number(data.cash_amount || 0),
+              card_amount: Number(data.card_amount || 0),
+              other_amount: Number(data.other_amount || 0),
+              receipt_url: data.receipt_url || data.proof_url || null,
+              proof_url: data.proof_url || data.receipt_url || null
+            };
+          }
+        }
+
+        if (cleanSql.includes('FROM SETTINGS WHERE KEY =')) {
+          const { data } = await supabase.from('settings').select('*').eq('key', params[0]).maybeSingle();
+          if (data) return { key: data.key, value: data.value };
+        }
+      } catch (err) {
+        console.error('Supabase getAsync exception, using fallback:', err);
+      }
+    }
+
+    // 2. FALLBACK IN-MEMORY STORE
+    const store = loadStore();
     if (cleanSql.includes('FROM USERS WHERE USERNAME =')) {
       return store.users.find(u => u.username === params[0]) || null;
-    }
-    if (cleanSql.includes('FROM USERS WHERE ID =')) {
-      return store.users.find(u => u.id === Number(params[0])) || null;
     }
     if (cleanSql.includes('FROM SALES WHERE ID =')) {
       return store.sales.find(s => s.id === Number(params[0])) || null;
@@ -261,164 +268,88 @@ const db = {
       const val = store.settings[params[0]];
       return val !== undefined ? { key: params[0], value: val } : null;
     }
-
     return null;
   },
 
   async allAsync(sql, params = []) {
-    if (!usePureJs && nativeDb) {
-      return new Promise((resolve, reject) => {
-        nativeDb.all(sql, params, (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        });
-      });
-    }
-
-    const store = loadStore();
     const cleanSql = sql.trim().toUpperCase();
 
-    if (cleanSql.includes('FROM AUDIT_LOGS WHERE SALE_ID =')) {
-      const saleId = Number(params[0]);
-      return store.audit_logs.filter(a => a.sale_id === saleId);
+    // 1. SUPABASE (Primary Database)
+    if (supabase) {
+      try {
+        if (cleanSql.includes('FROM AUDIT_LOGS WHERE SALE_ID =')) {
+          const { data } = await supabase.from('audit_logs').select('*').eq('sale_id', Number(params[0])).order('changed_at', { ascending: false });
+          if (data) return data;
+        }
+
+        if (cleanSql.includes('FROM SALES')) {
+          let q = supabase.from('sales').select('*');
+
+          if (params.length >= 2 && cleanSql.includes('BETWEEN ? AND ?')) {
+            q = q.gte('date', params[0]).lte('date', params[1]);
+          } else if (params.length >= 1 && cleanSql.includes('DATE >=')) {
+            q = q.gte('date', params[0]);
+          }
+
+          if (cleanSql.includes('DESCRIPTION LIKE ?')) {
+            const searchParam = String(params[params.length - 1] || '').replace(/%/g, '').trim();
+            if (searchParam) {
+              q = q.or(`description.ilike.%${searchParam}%,category.ilike.%${searchParam}%,notes.ilike.%${searchParam}%`);
+            }
+          }
+
+          if (cleanSql.includes('ORDER BY AMOUNT DESC')) {
+            q = q.order('amount', { ascending: false });
+          } else if (cleanSql.includes('ORDER BY AMOUNT ASC')) {
+            q = q.order('amount', { ascending: true });
+          } else if (cleanSql.includes('ORDER BY DESCRIPTION ASC')) {
+            q = q.order('description', { ascending: true });
+          } else {
+            q = q.order('date', { ascending: false }).order('time', { ascending: false }).order('id', { ascending: false });
+          }
+
+          const { data, error } = await q;
+          if (!error && Array.isArray(data)) {
+            return data.map(item => ({
+              ...item,
+              amount: Number(item.amount) || 0,
+              cash_amount: Number(item.cash_amount || 0),
+              card_amount: Number(item.card_amount || 0),
+              other_amount: Number(item.other_amount || 0),
+              proof_url: item.receipt_url || item.proof_url || null,
+              receipt_url: item.receipt_url || item.proof_url || null
+            }));
+          }
+          if (error) console.error('Supabase allAsync query error:', error);
+        }
+      } catch (err) {
+        console.error('Supabase allAsync exception, using fallback:', err);
+      }
     }
 
+    // 2. FALLBACK IN-MEMORY STORE
+    const store = loadStore();
+    if (cleanSql.includes('FROM AUDIT_LOGS WHERE SALE_ID =')) {
+      return store.audit_logs.filter(a => a.sale_id === Number(params[0]));
+    }
     if (cleanSql.includes('FROM SALES')) {
-      let result = store.sales.map(s => ({
+      return store.sales.map(s => ({
         ...s,
         proof_url: s.receipt_url || s.proof_url || null,
         receipt_url: s.receipt_url || s.proof_url || null
       }));
-
-      // Date filtering
-      if (params.length >= 2 && cleanSql.includes('BETWEEN ? AND ?')) {
-        const start = params[0];
-        const end = params[1];
-        result = result.filter(s => s.date >= start && s.date <= end);
-      } else if (params.length >= 1 && cleanSql.includes('DATE >=')) {
-        result = result.filter(s => s.date >= params[0]);
-      }
-
-      // Search filtering
-      if (cleanSql.includes('DESCRIPTION LIKE ?')) {
-        const searchParam = String(params[params.length - 1] || '').replace(/%/g, '').toLowerCase();
-        if (searchParam) {
-          result = result.filter(s =>
-            (s.description || '').toLowerCase().includes(searchParam) ||
-            (s.category || '').toLowerCase().includes(searchParam) ||
-            (s.notes || '').toLowerCase().includes(searchParam)
-          );
-        }
-      }
-
-      // Sorting
-      if (cleanSql.includes('ORDER BY AMOUNT DESC')) {
-        result.sort((a, b) => b.amount - a.amount);
-      } else if (cleanSql.includes('ORDER BY AMOUNT ASC')) {
-        result.sort((a, b) => a.amount - b.amount);
-      } else if (cleanSql.includes('ORDER BY DESCRIPTION ASC')) {
-        result.sort((a, b) => (a.description || '').localeCompare(b.description || ''));
-      } else {
-        // Default: Date DESC
-        result.sort((a, b) => {
-          if (b.date !== a.date) return b.date.localeCompare(a.date);
-          return (b.time || '').localeCompare(a.time || '');
-        });
-      }
-
-      return result;
     }
-
     return [];
   }
 };
 
 async function initDB() {
-  if (usePureJs || isServerless || !nativeDb) {
-    usePureJs = true;
-    loadStore();
-    console.log('Database initialized successfully (Engine: Pure-JS)');
+  if (supabase) {
+    console.log('Database initialized successfully (Engine: Supabase PostgreSQL)');
     return;
   }
-
-  try {
-    await db.runAsync(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'admin',
-        created_at TEXT NOT NULL
-      )
-    `);
-
-    await db.runAsync(`
-      CREATE TABLE IF NOT EXISTS sales (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        amount REAL NOT NULL,
-        currency TEXT NOT NULL DEFAULT '$',
-        description TEXT NOT NULL,
-        category TEXT DEFAULT 'General',
-        date TEXT NOT NULL,
-        time TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT,
-        receipt_url TEXT,
-        created_by TEXT DEFAULT 'user',
-        notes TEXT,
-        items TEXT,
-        cash_amount REAL DEFAULT 0,
-        card_amount REAL DEFAULT 0,
-        other_amount REAL DEFAULT 0,
-        other_payment_name TEXT,
-        payment_method TEXT DEFAULT 'Cash'
-      )
-    `);
-
-    await db.runAsync(`
-      CREATE TABLE IF NOT EXISTS audit_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sale_id INTEGER,
-        action TEXT NOT NULL,
-        changed_by TEXT NOT NULL,
-        changed_at TEXT NOT NULL,
-        details TEXT
-      )
-    `);
-
-    await db.runAsync(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )
-    `);
-
-    // Seed default admin user
-    const existingAdmin = await db.getAsync(`SELECT * FROM users WHERE username = ?`, ['admin']);
-    const adminHash = getAdminHash();
-    if (!existingAdmin) {
-      await db.runAsync(
-        `INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)`,
-        ['admin', adminHash, 'admin', new Date().toISOString()]
-      );
-    } else {
-      await db.runAsync(`UPDATE users SET password_hash = ? WHERE username = ?`, [adminHash, 'admin']);
-    }
-
-    // Seed default share token
-    const shareToken = await db.getAsync(`SELECT * FROM settings WHERE key = 'share_token'`);
-    if (!shareToken) {
-      await db.runAsync(`INSERT INTO settings (key, value) VALUES ('share_token', ?)`, ['public-view-34wran9r']);
-    }
-  } catch (e) {
-    console.log('SQLite init failed, activating pure-JS store:', e.message);
-    usePureJs = true;
-    loadStore();
-  }
-  console.log('Database initialized successfully (Engine:', usePureJs ? 'Pure-JS' : 'SQLite', ')');
+  loadStore();
+  console.log('Database initialized (Engine: In-Memory Fallback)');
 }
 
-module.exports = {
-  db,
-  initDB
-};
+module.exports = { db, initDB };

@@ -2,31 +2,12 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
-const { parseReceiptImage } = require('../ocr');
+const { supabase } = require('../supabase');
 
-const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-const uploadsDir = isServerless ? path.join('/tmp', 'uploads') : path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  try {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  } catch (e) {}
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'receipt-' + uniqueSuffix + ext);
-  }
-});
-
+// Memory storage for fast streaming directly to Supabase
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|webp|gif|bmp/;
@@ -52,55 +33,52 @@ const uploadProofOrReceipt = (req, res, next) => {
   });
 };
 
-// GET /api/upload/:filename - Serve single proof image
+// GET /api/upload/:filename - Redirect to Supabase Storage public CDN URL
 router.get('/:filename', (req, res) => {
   const filename = path.basename(req.params.filename);
-  const possiblePaths = [
-    path.join(uploadsDir, filename),
-    path.join(__dirname, '..', 'uploads', filename),
-    path.join('/tmp', 'uploads', filename)
-  ];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      return res.sendFile(p);
-    }
+  const { data } = supabase.storage.from('receipts').getPublicUrl(filename);
+  if (data && data.publicUrl) {
+    return res.redirect(302, data.publicUrl);
   }
   res.status(404).json({ error: 'Proof image not found' });
 });
 
-// POST /api/upload - Upload proof/receipt image and optionally scan OCR
+// POST /api/upload - Upload proof/receipt image directly to Supabase cloud storage
 router.post('/', requireAuth, uploadProofOrReceipt, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file uploaded' });
     }
 
-    const filePath = req.file.path;
-    const fileUrl = `/uploads/${req.file.filename}`;
-    const shouldScan = req.body.scan === 'true' || req.query.scan === 'true';
+    const ext = path.extname(req.file.originalname).toLowerCase() || '.jpg';
+    const filename = 'receipt-' + Date.now() + '-' + Math.round(Math.random() * 1E9) + ext;
 
-    let ocrResult = null;
-    if (shouldScan) {
-      console.log('Running OCR on uploaded proof/receipt:', req.file.filename);
-      ocrResult = await parseReceiptImage(filePath);
+    // Upload directly to Supabase Storage bucket 'receipts'
+    const { data, error } = await supabase.storage.from('receipts').upload(filename, req.file.buffer, {
+      contentType: req.file.mimetype || 'image/jpeg',
+      upsert: true
+    });
+
+    if (error) {
+      console.error('Supabase cloud storage upload error:', error);
+      return res.status(500).json({ error: 'Failed to upload image to cloud storage: ' + error.message });
     }
+
+    // Retrieve public CDN URL
+    const { data: pubData } = supabase.storage.from('receipts').getPublicUrl(filename);
+    const fileUrl = pubData.publicUrl;
 
     res.json({
       success: true,
       fileUrl,
       proofUrl: fileUrl,
-      filename: req.file.filename,
-      ocr: ocrResult ? {
-        extracted: ocrResult.extracted,
-        rawText: ocrResult.rawText,
-        ocrSuccess: ocrResult.success
-      } : null
+      filename,
+      ocr: null
     });
   } catch (err) {
-    console.error('Upload / OCR processing error:', err);
-    res.status(500).json({ error: 'Failed to process receipt image: ' + err.message });
+    console.error('Upload processing error:', err);
+    res.status(500).json({ error: 'Upload failed: ' + err.message });
   }
 });
 
 module.exports = router;
-
